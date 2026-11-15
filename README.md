@@ -28,7 +28,7 @@ Looking for the original Core? Core V1 is still available at [PongooDev/Core](ht
 | Full support ✅ | 1.1 – 6.30 |
 | In development 🚧 | 6.31 |
 
-Core moves forward one build at a time and skips builds nobody has a copy of, so full support is always one range: every build from the first version to the last one listed. Fortnite 3.4 and 4.3 are not supported: nobody has a copy of them, so the range skips them.
+Core V2 moves forward one build at a time and skips builds nobody has a copy of, so full support is always one range: every build from the first version to the last one listed. Fortnite 3.4 and 4.3 are not supported: nobody has a copy of them, so the range skips them.
 
 <details>
 <summary>Every build by changelist</summary>
@@ -126,7 +126,7 @@ Core moves forward one build at a time and skips builds nobody has a copy of, so
 3. Select **Release** and **x64** in the solution toolbar.
 4. Build it
 
-The build writes three DLLs to `x64\Release`: `Core.dll` (the server), `CoreClient.dll` (the client) and `CoreRedirect.dll` (points the game's HTTP traffic at Core-Backend).
+The build writes three DLLs to `x64\Release`: `Core.dll` (the server), `CoreClient.dll` (the client), and `CoreRedirect.dll` (redirects game HTTP traffic to Core-Backend). The redirect has not been adapted to GhostBackend-V2 yet.
 
 ## Contributing
 
