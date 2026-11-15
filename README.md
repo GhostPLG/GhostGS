@@ -1,23 +1,23 @@
 GhostGS is a GPL-3.0 fork of [Core V2](https://github.com/PongooDev/CoreV2), retaining the upstream license, notices, and history. The upstream project lists Fortnite 6.31 (CL-4573279) as in development; this fork does not claim that build is fully supported.
 
-The Windows x64 release workflow builds and attaches the server, client, and redirect DLLs to a GitHub Release on pushes to `main`.
+The Windows x64 release workflow builds and attaches the server, client, and redirect DLLs to a [GhostGS GitHub Release](https://github.com/GhostPLG/GhostGS/releases) on pushes to `main`.
 
 <h1>
   <img src="https://github.com/user-attachments/assets/28d73a41-1c02-4343-8365-3a19d0771d48" width="50" height="50" align="absmiddle" />
   &nbsp;GhostGS
 </h1>
 
-**Core V2** is a community made Fortnite gameserver focused on recreating original behavior as accurately as possible, starting from the earliest x64 Fortnite builds and moving forward one build at a time. It is a full rewrite of [Core](https://github.com/PongooDev/Core), built to be more accurate and more maintainable across many builds.
+**GhostGS** is a community Fortnite gameserver derived from Core V2, which recreates original behavior across Fortnite builds. This repository does not include Fortnite game files or a launcher.
 
-Core runs inside Fortnite to provide server-side systems to load maps, accept players, run matches, and support gameplay. This repository does NOT include Fortnite game files or a launcher. The backend is a separate project: [Core-Backend](https://github.com/PongooDev/Core-Backend).
+The upstream Core V2 project runs inside Fortnite to provide server-side systems for loading maps, accepting players, running matches, and gameplay. Backend integration is a separate component and is not included in this repository.
 
-> Core is an independent community project. It is not affiliated with, endorsed by, or supported by Epic Games.
+> GhostGS is an independent community project. It is not affiliated with, endorsed by, or supported by Epic Games.
 
 **Please refer to the [Contributing](#contributing) section before posting an issue, Thank you!**
 
-[Join the Core Discord](https://discord.gg/auzEaKs7AS) · [Report an issue](https://github.com/PongooDev/CoreV2/issues)
+[Upstream Core Discord](https://discord.gg/auzEaKs7AS) · [Report an issue](https://github.com/GhostPLG/GhostGS/issues)
 
-## 📥[Download](https://github.com/PongooDev/CoreV2/releases)📥
+## 📥[Download](https://github.com/GhostPLG/GhostGS/releases)📥
 
 Looking for the original Core? Core V1 is still available at [PongooDev/Core](https://github.com/PongooDev/Core).
 
@@ -117,9 +117,9 @@ Core moves forward one build at a time and skips builds nobody has a copy of, so
 1. Clone the repository:
 
    ```
-   git clone --recursive https://github.com/PongooDev/CoreV2
+   git clone --recursive https://github.com/GhostPLG/GhostGS
 
-   cd CoreV2
+   cd GhostGS
    ```
 
 2. Open [`Core.sln`](Core.sln) in Visual Studio
