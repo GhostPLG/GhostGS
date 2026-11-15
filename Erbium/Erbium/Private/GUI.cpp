@@ -21,9 +21,19 @@ extern IMGUI_IMPL_API LRESULT ImGui_ImplWin32_WndProcHandler(HWND hWnd, UINT msg
 
 namespace
 {
-    std::mutex DiagnosticsMutex;
-    std::deque<std::string> DiagnosticsLines;
+    struct DiagnosticsState
+    {
+        std::mutex Mutex;
+        std::deque<std::string> Lines;
+    };
+
     constexpr size_t MaxDiagnosticsLines = 500;
+
+    DiagnosticsState& GetDiagnosticsState()
+    {
+        static auto* State = new DiagnosticsState();
+        return *State;
+    }
 
     bool CopyRecentLogsToClipboard(HWND Window)
     {
@@ -76,26 +86,27 @@ namespace Diagnostics
         Buffer[sizeof(Buffer) - 1] = '\0';
 
         const std::string Line(Buffer);
+        auto& State = GetDiagnosticsState();
         {
-            std::lock_guard<std::mutex> Lock(DiagnosticsMutex);
-            if (DiagnosticsLines.size() == MaxDiagnosticsLines)
-                DiagnosticsLines.pop_front();
-            DiagnosticsLines.push_back(Line);
+            std::lock_guard<std::mutex> Lock(State.Mutex);
+            if (State.Lines.size() == MaxDiagnosticsLines)
+                State.Lines.pop_front();
+            State.Lines.push_back(Line);
         }
-        if (FConfiguration::bUseStdoutLog || GetConsoleWindow())
-            printf("%s\n", Line.c_str());
     }
 
     std::vector<std::string> GetRecentLogs()
     {
-        std::lock_guard<std::mutex> Lock(DiagnosticsMutex);
-        return {DiagnosticsLines.begin(), DiagnosticsLines.end()};
+        auto& State = GetDiagnosticsState();
+        std::lock_guard<std::mutex> Lock(State.Mutex);
+        return {State.Lines.begin(), State.Lines.end()};
     }
 
     void Clear()
     {
-        std::lock_guard<std::mutex> Lock(DiagnosticsMutex);
-        DiagnosticsLines.clear();
+        auto& State = GetDiagnosticsState();
+        std::lock_guard<std::mutex> Lock(State.Mutex);
+        State.Lines.clear();
     }
 }
 
@@ -257,6 +268,7 @@ void GUI::Init()
 
     ImGui_ImplWin32_Init(hWnd);
     ImGui_ImplDX11_Init(g_pd3dDevice, g_pd3dDeviceContext);
+    Diagnostics::Log("[Diagnostics] UI log buffer ready; stdout output disabled");
 
     ImVec4 clear_color = ImVec4(0.45f, 0.55f, 0.60f, 1.00f);
     bool done = false;
