@@ -63,14 +63,14 @@ namespace
         auto AccountId = GetEpicAccountId(PlayerState);
         if (AccountId.empty())
         {
-            printf("[gs-backend] could not extract player accountId\n");
+            Diagnostics::Log("[gs-backend] could not extract player accountId");
             return false;
         }
 
         auto Curl = curl_easy_init();
         if (!Curl)
         {
-            printf("[gs-backend] failed to initialize profile request | account=%s\n", AccountId.c_str());
+            Diagnostics::Log("[gs-backend] failed to initialize profile request | account=%s", AccountId.c_str());
             return false;
         }
 
@@ -89,8 +89,8 @@ namespace
 
         if (Result != CURLE_OK || HttpStatus != 200)
         {
-            printf("[gs-backend] snapshot falhou | account=%s | http=%ld | erro=%s\n",
-                   AccountId.c_str(), HttpStatus, curl_easy_strerror(Result));
+            Diagnostics::Log("[gs-backend] snapshot falhou | account=%s | http=%ld | erro=%s",
+                             AccountId.c_str(), HttpStatus, curl_easy_strerror(Result));
             return false;
         }
 
@@ -99,6 +99,8 @@ namespace
         std::string CharacterId;
         std::string BackpackId;
         std::string PickaxeId;
+        std::string GliderId;
+        std::string ContrailId;
         int SnapshotQuestCount = 0;
         std::istringstream Snapshot(Response);
         std::string Line;
@@ -114,13 +116,15 @@ namespace
             else if (Key == "character") CharacterId = Value;
             else if (Key == "backpack") BackpackId = Value;
             else if (Key == "pickaxe") PickaxeId = Value;
+            else if (Key == "glider") GliderId = Value;
+            else if (Key == "contrail") ContrailId = Value;
             else if (Key == "quest") SnapshotQuestCount++;
         }
 
         if (SnapshotAccountId != AccountId)
         {
-            printf("[gs-backend] account mismatch in profile snapshot | expected=%s | received=%s\n",
-                   AccountId.c_str(), SnapshotAccountId.c_str());
+            Diagnostics::Log("[gs-backend] account mismatch in profile snapshot | expected=%s | received=%s",
+                             AccountId.c_str(), SnapshotAccountId.c_str());
             return false;
         }
 
@@ -145,10 +149,14 @@ namespace
         const auto CharacterPath = ResolvePath(CharacterId, "AthenaCharacter", L"/Game/Athena/Items/Cosmetics/Characters/");
         const auto BackpackPath = ResolvePath(BackpackId, "AthenaBackpack", L"/Game/Athena/Items/Cosmetics/Backpacks/");
         const auto PickaxePath = ResolvePath(PickaxeId, "AthenaPickaxe", L"/Game/Athena/Items/Cosmetics/Pickaxes/");
+        const auto GliderPath = ResolvePath(GliderId, "AthenaGlider", L"/Game/Athena/Items/Cosmetics/Gliders/");
+        const auto ContrailPath = ResolvePath(ContrailId, "AthenaSkyDiveContrail", L"/Game/Athena/Items/Cosmetics/Contrails/");
 
         auto Character = CharacterPath.empty() ? nullptr : const_cast<UAthenaCharacterItemDefinition*>(FindObject<UAthenaCharacterItemDefinition>(CharacterPath.c_str()));
         auto Backpack = BackpackPath.empty() ? nullptr : const_cast<UAthenaCharacterPartItemDefinition*>(FindObject<UAthenaCharacterPartItemDefinition>(BackpackPath.c_str()));
         auto Pickaxe = PickaxePath.empty() ? nullptr : const_cast<UAthenaPickaxeItemDefinition*>(FindObject<UAthenaPickaxeItemDefinition>(PickaxePath.c_str()));
+        auto Glider = GliderPath.empty() ? nullptr : const_cast<UFortItemDefinition*>(FindObject<UFortItemDefinition>(GliderPath.c_str()));
+        auto Contrail = ContrailPath.empty() ? nullptr : const_cast<UFortItemDefinition*>(FindObject<UFortItemDefinition>(ContrailPath.c_str()));
         auto FindAssetName = [](const std::string& TemplateId)
         {
             const auto Separator = TemplateId.find(':');
@@ -157,30 +165,41 @@ namespace
         const auto CharacterName = FindAssetName(CharacterId);
         const auto BackpackName = FindAssetName(BackpackId);
         const auto PickaxeName = FindAssetName(PickaxeId);
+        const auto GliderName = FindAssetName(GliderId);
+        const auto ContrailName = FindAssetName(ContrailId);
         if (!Character && !CharacterName.empty())
             Character = const_cast<UAthenaCharacterItemDefinition*>(TUObjectArray::FindObject<UAthenaCharacterItemDefinition>(CharacterName));
         if (!Backpack && !BackpackName.empty())
             Backpack = const_cast<UAthenaCharacterPartItemDefinition*>(TUObjectArray::FindObject<UAthenaCharacterPartItemDefinition>(BackpackName));
         if (!Pickaxe && !PickaxeName.empty())
             Pickaxe = const_cast<UAthenaPickaxeItemDefinition*>(TUObjectArray::FindObject<UAthenaPickaxeItemDefinition>(PickaxeName));
+        if (!Glider && !GliderName.empty())
+            Glider = const_cast<UFortItemDefinition*>(TUObjectArray::FindObject<UFortItemDefinition>(GliderName));
+        if (!Contrail && !ContrailName.empty())
+            Contrail = const_cast<UFortItemDefinition*>(TUObjectArray::FindObject<UFortItemDefinition>(ContrailName));
 
         if (PlayerController->HasCosmeticLoadoutPC())
         {
             if (Character) PlayerController->CosmeticLoadoutPC.Character = Character;
             if (Backpack) PlayerController->CosmeticLoadoutPC.Backpack = Backpack;
             if (Pickaxe) PlayerController->CosmeticLoadoutPC.Pickaxe = Pickaxe;
+            if (Glider) PlayerController->CosmeticLoadoutPC.Glider = Glider;
+            if (Contrail) PlayerController->CosmeticLoadoutPC.SkyDiveContrail = Contrail;
         }
         if (PlayerController->HasCustomizationLoadout())
         {
             if (Character) PlayerController->CustomizationLoadout.Character = Character;
             if (Backpack) PlayerController->CustomizationLoadout.Backpack = Backpack;
             if (Pickaxe) PlayerController->CustomizationLoadout.Pickaxe = Pickaxe;
+            if (Glider) PlayerController->CustomizationLoadout.Glider = Glider;
+            if (Contrail) PlayerController->CustomizationLoadout.SkyDiveContrail = Contrail;
         }
 
-        printf("[gs-backend] snapshot | account=%s | quests=%d | character=%s | backpack=%s | pickaxe=%s\n",
+        Diagnostics::Log("[gs-backend] snapshot | account=%s | quests=%d | character=%s | backpack=%s | pickaxe=%s | glider=%s | contrail=%s",
                AccountId.c_str(), SnapshotQuestCount,
                Character ? CharacterId.c_str() : "not loaded",
-               Backpack ? BackpackId.c_str() : "not loaded", Pickaxe ? PickaxeId.c_str() : "not loaded");
+               Backpack ? BackpackId.c_str() : "not loaded", Pickaxe ? PickaxeId.c_str() : "not loaded",
+               Glider ? GliderId.c_str() : "not loaded", Contrail ? ContrailId.c_str() : "not loaded");
         return true;
     }
 
@@ -192,7 +211,7 @@ namespace
         auto QuestManager = PlayerController->GetQuestManager(1);
         if (!QuestManager)
         {
-            printf("[gs-backend] quest manager unavailable for profile quests\n");
+            Diagnostics::Log("[gs-backend] quest manager unavailable for profile quests");
             return;
         }
 
@@ -252,7 +271,7 @@ namespace
             }
             if (!QuestDefinition)
             {
-                printf("[gs-backend] daily quest definition not found | template=%s\n", TemplateId.c_str());
+                Diagnostics::Log("[gs-backend] daily quest definition not found | template=%s", TemplateId.c_str());
                 continue;
             }
 
@@ -260,13 +279,13 @@ namespace
             auto QuestItem = QuestInstance ? QuestInstance->Cast<UFortQuestItem>() : nullptr;
             if (!QuestItem)
             {
-                printf("[gs-backend] failed to create daily quest instance | template=%s\n", TemplateId.c_str());
+                Diagnostics::Log("[gs-backend] failed to create daily quest instance | template=%s", TemplateId.c_str());
                 continue;
             }
             QuestItem->ItemDefinition = QuestDefinition;
             if (QuestItem->Objectives.Num() == 0)
             {
-                printf("[gs-backend] daily quest instance has no objectives | template=%s\n", TemplateId.c_str());
+                Diagnostics::Log("[gs-backend] daily quest instance has no objectives | template=%s", TemplateId.c_str());
                 continue;
             }
 
@@ -302,6 +321,9 @@ namespace
                 const auto BackendObjectiveName = Objective->BackendName.ToString();
                 const auto ObjectiveName = std::string(
                     BackendObjectiveName.begin(), BackendObjectiveName.end());
+                Diagnostics::Log("[gs-backend] quest objective | template=%s | objective=%s | progress=%d/%d",
+                                 TemplateId.c_str(), ObjectiveName.c_str(),
+                                 Objective->AchievedCount, Objective->RequiredCount);
                 const auto Progress = ObjectiveProgress.find(ObjectiveName);
                 if (Progress != ObjectiveProgress.end())
                     Objective->AchievedCount = Progress->second < Objective->RequiredCount
@@ -313,7 +335,7 @@ namespace
             AddedQuests++;
         }
 
-        printf("[gs-backend] daily quests loaded | account=%s | added=%d | total=%d\n",
+        Diagnostics::Log("[gs-backend] daily quests loaded | account=%s | added=%d | total=%d",
                GetEpicAccountId(PlayerController->PlayerState).c_str(),
                AddedQuests, QuestManager->CurrentQuests.Num());
     }
@@ -329,7 +351,18 @@ namespace
         else if (PlayerController->HasCustomizationLoadout())
             Loadout = &PlayerController->CustomizationLoadout;
         if (!Loadout)
+        {
+            Diagnostics::Log("[gs-backend] no loadout properties | CosmeticLoadoutPC=%d | CustomizationLoadout=%d",
+                             PlayerController->HasCosmeticLoadoutPC(), PlayerController->HasCustomizationLoadout());
             return;
+        }
+
+        Diagnostics::Log("[gs-backend] pawn loadout fields | character=%s | backpack=%s | pickaxe=%s | glider=%s | contrail=%s",
+                         Loadout->Character ? "set" : "empty",
+                         Loadout->Backpack ? "set" : "empty",
+                         Loadout->Pickaxe ? "set" : "empty",
+                         Loadout->Glider ? "set" : "empty",
+                         Loadout->SkyDiveContrail ? "set" : "empty");
 
         std::unordered_map<uint8, const UCustomCharacterPart*> Parts;
 
@@ -363,6 +396,9 @@ namespace
 
         for (const auto& [PartType, Part] : Parts)
             Pawn->ServerChoosePart(PartType, const_cast<UCustomCharacterPart*>(Part));
+        Diagnostics::Log("[gs-backend] pawn customization applied | parts=%llu | native=%s",
+                         static_cast<unsigned long long>(Parts.size()),
+                         ApplyCharacterCustomization ? "available" : "unavailable");
     }
 }
 
@@ -1671,7 +1707,7 @@ void AFortGameMode::HandleStartingNewPlayer_(UObject* Context, FFrame& Stack)
     callOG(GameMode, Stack.GetCurrentNativeFunction(), HandleStartingNewPlayer, NewPlayer);
     LoadDailyQuestsFromSnapshot(NewPlayer, BackendSnapshot);
     if (auto QuestManager = NewPlayer->GetQuestManager(1))
-        printf("[gs-backend] jogador conectado | account=%s | quests no GS=%d\n",
+        Diagnostics::Log("[gs-backend] jogador conectado | account=%s | quests no GS=%d",
                GetEpicAccountId(PlayerState).c_str(), QuestManager->CurrentQuests.Num());
 }
 

@@ -7,12 +7,96 @@
 #include "../../ImGui/imgui_impl_win32.h"
 #include "../Public/Configuration.h"
 #include "../Public/Events.h"
+#include <cstdarg>
+#include <cstdio>
+#include <cstring>
 #include <d3d11.h>
+#include <deque>
 #include <fstream>
+#include <mutex>
 #include <sstream>
 #pragma comment(lib, "d3d11.lib")
 
 extern IMGUI_IMPL_API LRESULT ImGui_ImplWin32_WndProcHandler(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam);
+
+namespace
+{
+    std::mutex DiagnosticsMutex;
+    std::deque<std::string> DiagnosticsLines;
+    constexpr size_t MaxDiagnosticsLines = 500;
+
+    bool CopyRecentLogsToClipboard(HWND Window)
+    {
+        std::string Text;
+        for (const auto& Line : Diagnostics::GetRecentLogs())
+        {
+            Text += Line;
+            Text += "\r\n";
+        }
+
+        auto ClipboardData = GlobalAlloc(GMEM_MOVEABLE, Text.size() + 1);
+        if (!ClipboardData)
+            return false;
+
+        auto ClipboardText = static_cast<char*>(GlobalLock(ClipboardData));
+        if (!ClipboardText)
+        {
+            GlobalFree(ClipboardData);
+            return false;
+        }
+        memcpy(ClipboardText, Text.c_str(), Text.size() + 1);
+        GlobalUnlock(ClipboardData);
+
+        if (!OpenClipboard(Window))
+        {
+            GlobalFree(ClipboardData);
+            return false;
+        }
+        const auto Emptied = EmptyClipboard();
+        const auto Set = Emptied && SetClipboardData(CF_TEXT, ClipboardData);
+        CloseClipboard();
+        if (!Set)
+        {
+            GlobalFree(ClipboardData);
+            return false;
+        }
+        return true;
+    }
+}
+
+namespace Diagnostics
+{
+    void Log(const char* Format, ...)
+    {
+        char Buffer[2048]{};
+        va_list Args;
+        va_start(Args, Format);
+        std::vsnprintf(Buffer, sizeof(Buffer), Format, Args);
+        va_end(Args);
+        Buffer[sizeof(Buffer) - 1] = '\0';
+
+        const std::string Line(Buffer);
+        {
+            std::lock_guard<std::mutex> Lock(DiagnosticsMutex);
+            if (DiagnosticsLines.size() == MaxDiagnosticsLines)
+                DiagnosticsLines.pop_front();
+            DiagnosticsLines.push_back(Line);
+        }
+        printf("%s\n", Line.c_str());
+    }
+
+    std::vector<std::string> GetRecentLogs()
+    {
+        std::lock_guard<std::mutex> Lock(DiagnosticsMutex);
+        return {DiagnosticsLines.begin(), DiagnosticsLines.end()};
+    }
+
+    void Clear()
+    {
+        std::lock_guard<std::mutex> Lock(DiagnosticsMutex);
+        DiagnosticsLines.clear();
+    }
+}
 
 UINT g_ResizeWidth = 0, g_ResizeHeight = 0;
 
@@ -270,6 +354,12 @@ void GUI::Init()
                 ImGui::EndTabItem();
             }
 
+            if (ImGui::BeginTabItem("Logs"))
+            {
+                SelectedUI = 5;
+                ImGui::EndTabItem();
+            }
+
             // do not remove
             if (ImGui::TabItemButton("Made by Sarah (@ustruct on Discord)"))
                 ImGui::EndTabItem();
@@ -515,6 +605,29 @@ void GUI::Init()
             }
 
             break;
+        case 5:
+        {
+            static char CopyStatus[64] = "Recent GS diagnostics";
+            if (ImGui::Button("Copy logs to clipboard"))
+                strcpy_s(CopyStatus, sizeof(CopyStatus), CopyRecentLogsToClipboard(hWnd) ? "Logs copied" : "Clipboard copy failed");
+            ImGui::SameLine();
+            if (ImGui::Button("Clear"))
+            {
+                Diagnostics::Clear();
+                strcpy_s(CopyStatus, sizeof(CopyStatus), "Logs cleared");
+            }
+            ImGui::SameLine();
+            ImGui::TextUnformatted(CopyStatus);
+            ImGui::TextUnformatted("Reproduce the issue, then copy these recent diagnostics.");
+            ImGui::BeginChild("DiagnosticsLogLines", ImVec2(0, 0), ImGuiChildFlags_Borders);
+            const auto Logs = Diagnostics::GetRecentLogs();
+            for (const auto& Line : Logs)
+                ImGui::TextUnformatted(Line.c_str());
+            if (ImGui::GetScrollY() >= ImGui::GetScrollMaxY() - 1.0f)
+                ImGui::SetScrollHereY(1.0f);
+            ImGui::EndChild();
+            break;
+        }
         }
 
         ImGui::End();

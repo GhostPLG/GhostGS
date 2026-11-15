@@ -1,6 +1,7 @@
 #include "pch.h"
 #include "../Public/FortQuestManager.h"
 #include "../Public/FortGameMode.h"
+#include "../../Erbium/Public/GUI.h"
 #include <unordered_set>
 #include <thread>
 
@@ -41,7 +42,7 @@ namespace
             auto Curl = curl_easy_init();
             if (!Curl)
             {
-                printf("[gs-backend] failed to initialize quest progress request\n");
+                Diagnostics::Log("[gs-backend] failed to initialize quest progress request");
                 return;
             }
             auto Headers = curl_slist_append(nullptr, "Content-Type: application/json");
@@ -59,11 +60,11 @@ namespace
             curl_easy_cleanup(Curl);
 
             if (Result != CURLE_OK || (HttpStatus != 204 && HttpStatus != 200))
-                printf("[gs-backend] failed to save quest | account=%s | quest=%s | objective=%s | http=%ld | error=%s\n",
-                       AccountId.c_str(), TemplateId.c_str(), Objective.c_str(), HttpStatus, curl_easy_strerror(Result));
+                Diagnostics::Log("[gs-backend] failed to save quest | account=%s | quest=%s | objective=%s | http=%ld | error=%s",
+                                 AccountId.c_str(), TemplateId.c_str(), Objective.c_str(), HttpStatus, curl_easy_strerror(Result));
             else
-                printf("[gs-backend] saved quest | account=%s | quest=%s | objective=%s | progress=%d | completed=%s\n",
-                       AccountId.c_str(), TemplateId.c_str(), Objective.c_str(), Progress, Completed ? "true" : "false");
+                Diagnostics::Log("[gs-backend] saved quest | account=%s | quest=%s | objective=%s | progress=%d | completed=%s",
+                                 AccountId.c_str(), TemplateId.c_str(), Objective.c_str(), Progress, Completed ? "true" : "false");
         }).detach();
     }
 }
@@ -338,9 +339,9 @@ void ProgressQuest(UFortQuestManager* _this, AFortPlayerControllerAthena* Player
         }
     }
 
-    printf("[Quests] %s Progress: %d/%d | Completed: %s\n",
-           BackendName.ToString().c_str(), UpdatedProgress, QuestObjective->RequiredCount,
-           bObjectiveCompleted ? "true" : "false");
+    Diagnostics::Log("[Quests] %s Progress: %d/%d | Completed: %s",
+                     BackendName.ToString().c_str(), UpdatedProgress, QuestObjective->RequiredCount,
+                     bObjectiveCompleted ? "true" : "false");
     // keep it the same damnit
     _this->SelfCompletedUpdatedQuest(PlayerController, QuestDefinition, BackendName, UpdatedProgress, ProgressDelta, nullptr, bObjectiveCompleted, bAllObjectivesCompleted);
 
@@ -382,6 +383,9 @@ void UFortQuestManager::SendStatEvent__Internal(AActor* PlayerController, long l
 {
     if (!this)
         return;
+
+    Diagnostics::Log("[QuestManager] dispatch stat event=%lld | count=%d | quests=%d",
+                     StatEvent, Count, CurrentQuests.Num());
 
     static auto XPTable = FindObject<UDataTable>(L"/Game/Athena/Items/Quests/AthenaObjectiveStatXPTable.AthenaObjectiveStatXPTable");
     auto FortPC = (AFortPlayerControllerAthena*)PlayerController;
@@ -503,7 +507,7 @@ void UFortQuestManager::SendStatEvent__Internal(AActor* PlayerController, long l
                     if (!IsConditionMet(Row->Condition, TargetTags, SourceTags, ContextTags))
                         continue;
 
-                    printf("[Quests] Update: %s\n", Objective.BackendName.ToString().c_str());
+                    Diagnostics::Log("[Quests] Update: %s", Objective.BackendName.ToString().c_str());
                     ProgressQuest(this, FortPC, Quest, Objective.BackendName, Count);
                 }
             }
@@ -552,6 +556,7 @@ void UFortQuestManager::SendStatEvent__Internal(AActor* PlayerController, long l
                         if (!IsConditionMet(ObjectiveStat.Condition, TargetTags, SourceTags, ContextTags))
                             continue;
 
+                        Diagnostics::Log("[Quests] Update inline objective: %s", Objective.BackendName.ToString().c_str());
                         ProgressQuest(this, FortPC, Quest, Objective.BackendName, Count);
                     }
                 }
@@ -573,7 +578,8 @@ void UFortQuestManager::SendStatEvent(AActor* PlayerController, long long StatEv
 
     GetSourceAndContextTags(&PlayerSourceTags, &ContextTags);
 
-    printf("[QuestManager] SendStatEvent (Event: %lld)\n", StatEvent);
+    Diagnostics::Log("[QuestManager] SendStatEvent (Event: %lld) | count=%d | quests=%d",
+                     StatEvent, Count, CurrentQuests.Num());
 
     auto GameMode = (AFortGameModeAthena*)UWorld::GetWorld()->AuthorityGameMode;
     auto GameState = (AFortGameStateAthena*)GameMode->GameState;
@@ -613,14 +619,14 @@ void SendComplexCustomStatEvent(UObject* Context, FFrame& Stack)
 
     auto PlayerController = (AFortPlayerControllerAthena*)QuestManager->GetPlayerControllerBP();
 
-    printf("SendComplexCustomStatEvent\n");
+    Diagnostics::Log("[QuestManager] SendComplexCustomStatEvent");
     QuestManager->SendStatEvent(PlayerController, EFortQuestObjectiveStatEvent::GetComplexCustom(), Count, false, TargetObject, TargetTags, AdditionalSourceTags);
 }
 
 void QueueStatEvent(UFortQuestManager* QuestManager, uint8_t InType, UObject* InTargetObject, FGameplayTagContainer* InTargetTags, FGameplayTagContainer* InSourceTags, FGameplayTagContainer* InContextTags,
                     void* InObjectiveStat, FName InObjectiveBackendName, int InCount)
 {
-    printf("[QuestManager] QueueStatEvent (Event: %d)\n", InType);
+    Diagnostics::Log("[QuestManager] QueueStatEvent (Event: %d)", InType);
 
     auto GameMode = (AFortGameModeAthena*)UWorld::GetWorld()->AuthorityGameMode;
     auto GameState = (AFortGameStateAthena*)GameMode->GameState;
@@ -641,6 +647,8 @@ void UFortQuestManager::PostLoadHook()
     auto QueueStatEventAddr = FindQueueStatEvent();
 
     bHasQueueStatEvent = QueueStatEventAddr != 0;
+    Diagnostics::Log("[QuestManager] queue stat event hook %s",
+                     bHasQueueStatEvent ? "available" : "unavailable");
     Hooking::Hook(QueueStatEventAddr, QueueStatEvent);
 
     if (!bHasQueueStatEvent)

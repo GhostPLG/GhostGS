@@ -98,6 +98,8 @@ public:
     DEFINE_STRUCT_PROP(Character, UAthenaCharacterItemDefinition*);
     DEFINE_STRUCT_PROP(Backpack, UAthenaCharacterPartItemDefinition*);
     DEFINE_STRUCT_PROP(Pickaxe, UAthenaPickaxeItemDefinition*);
+    DEFINE_STRUCT_PROP(Glider, UFortItemDefinition*);
+    DEFINE_STRUCT_PROP(SkyDiveContrail, UFortItemDefinition*);
     DEFINE_STRUCT_PROP(CharacterVariantChannels, TArray<FMcpVariantChannelInfo>);
 };
 

@@ -23,7 +23,8 @@ Each push to `main` builds the x64 server and client DLLs and publishes them as 
 
 ## GhostBackend integration
 - When using the matching GhostBackend, run the backend and gameserver on the same machine at `127.0.0.1:3551`.
-- The gameserver reads the player's Athena loadout and daily quests through the backend's loopback-only internal API, then reports daily quest progress back to the profile.
+- The gameserver reads the player's Athena loadout (outfit, backpack, pickaxe, glider, and contrail) and daily quests through the backend's loopback-only internal API, then reports daily quest progress back to the profile.
+- Use the **Logs** tab in the GS window to inspect recent integration diagnostics or copy them to the clipboard.
 - Do not forward `/fortnite/api/internal/gs/` through a public reverse proxy.
 
 > If you have issues with a specific version or find a bug, please make an issue.
