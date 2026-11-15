@@ -418,6 +418,57 @@ namespace
     }
 }
 
+void AFortGameMode::InitNewPlayer_(UObject* Context, FFrame& Stack, FString* Ret)
+{
+    AFortPlayerControllerAthena* NewPlayer = nullptr;
+    Stack.StepCompiledIn(&NewPlayer);
+    auto& IncomingUniqueId = Stack.StepCompiledInRef<FUniqueNetIdRepl>();
+    auto& Options = Stack.StepCompiledInRef<FString>();
+    auto& Portal = Stack.StepCompiledInRef<FString>();
+    Stack.IncrementCode();
+
+    auto GameMode = static_cast<AFortGameMode*>(Context);
+    *Ret = callOGWithRet(GameMode, Stack.GetCurrentNativeFunction(), InitNewPlayer,
+                         NewPlayer, IncomingUniqueId, Options, Portal);
+
+    auto PlayerState = NewPlayer ? NewPlayer->PlayerState : nullptr;
+    const auto IncomingBytes = IncomingUniqueId.ReplicationBytes.Num();
+    const auto OptionsText = Options.ToString();
+    const auto HasAccountIdOption =
+        OptionsText.find("accountId") != std::string::npos ||
+        OptionsText.find("AccountId") != std::string::npos ||
+        OptionsText.find("AccountID") != std::string::npos;
+    const auto HasPlayerIdOption =
+        OptionsText.find("playerId") != std::string::npos ||
+        OptionsText.find("PlayerId") != std::string::npos ||
+        OptionsText.find("UniqueId") != std::string::npos ||
+        OptionsText.find("UniqueID") != std::string::npos;
+    const auto HasSessionIdOption =
+        OptionsText.find("sessionId") != std::string::npos ||
+        OptionsText.find("SessionId") != std::string::npos;
+    const auto HasSessionKeyOption =
+        OptionsText.find("sessionKey") != std::string::npos ||
+        OptionsText.find("SessionKey") != std::string::npos;
+
+    if (PlayerState && IncomingBytes >= 18 && GetEpicAccountId(PlayerState).empty())
+    {
+        if (PlayerState->HasUniqueID())
+            PlayerState->UniqueID = IncomingUniqueId;
+        else if (PlayerState->HasUniqueId())
+            PlayerState->UniqueId = IncomingUniqueId;
+    }
+
+    const auto UniqueIdBytes = PlayerState && PlayerState->HasUniqueId()
+                                   ? PlayerState->UniqueId.ReplicationBytes.Num()
+                                   : -1;
+    const auto LegacyUniqueIdBytes = PlayerState && PlayerState->HasUniqueID()
+                                         ? PlayerState->UniqueID.ReplicationBytes.Num()
+                                         : -1;
+    Diagnostics::Log("[gs-backend] InitNewPlayer identity | incoming bytes=%d | UniqueId bytes=%d | UniqueID bytes=%d | options chars=%d | accountId key=%d | playerId key=%d | sessionId key=%d | sessionKey key=%d",
+                    IncomingBytes, UniqueIdBytes, LegacyUniqueIdBytes, Options.Num(),
+                    HasAccountIdOption, HasPlayerIdOption, HasSessionIdOption, HasSessionKeyOption);
+}
+
 void ShowFoundation(const ABuildingFoundation* Foundation)
 {
     if (!Foundation)
@@ -2586,6 +2637,12 @@ void AFortGameMode::PostLoadHook()
     ApplyCharacterCustomization = FindApplyCharacterCustomization();
     NotifyGameMemberAdded_ = FindNotifyGameMemberAdded();
     StartStreamingAdditionalPlaylistLevel_ = FindStartStreamingAdditionalPlaylistLevel();
+
+    auto InitNewPlayerFunction = GetDefaultObj()->GetFunction("InitNewPlayer");
+    if (InitNewPlayerFunction)
+        Hooking::ExecHook(InitNewPlayerFunction, InitNewPlayer_, InitNewPlayer_OG);
+    else
+        Diagnostics::Log("[gs-backend] InitNewPlayer hook unavailable");
 
     auto spdf = GetDefaultObj()->GetFunction("SpawnDefaultPawnFor");
     SpawnDefaultPawnForIdx = spdf->GetVTableIndex();

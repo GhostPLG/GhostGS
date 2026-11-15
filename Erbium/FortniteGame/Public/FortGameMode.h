@@ -60,6 +60,7 @@ public:
 
     DEFINE_FUNC(SpawnDefaultPawnAtTransform, AFortPlayerPawnAthena*);
     DEFINE_FUNC(RestartPlayer, void);
+    DEFINE_FUNC(InitNewPlayer, FString);
     DEFINE_FUNC(ReadyToStartMatch, bool);
     DEFINE_FUNC(HandleStartingNewPlayer, void);
     DEFINE_FUNC(OnAircraftExitedDropZone, void);
@@ -68,6 +69,7 @@ public:
     DEFINE_FUNC(GetDefaultPawnClassForController, const UClass*);
     DEFINE_FUNC(IsInCurrentSafeZone, bool);
 
+    DefUHookOgRet(FString, InitNewPlayer_);
     DefUHookOgRet(bool, ReadyToStartMatch_);
     static void SpawnDefaultPawnFor(UObject*, FFrame&, AActor**);
     DefHookOg(void, HandlePostSafeZonePhaseChanged, AFortGameMode*, int);
