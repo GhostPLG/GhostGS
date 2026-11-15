@@ -29,21 +29,32 @@ std::string GetEpicAccountId(AFortPlayerStateAthena* PlayerState)
     if (!PlayerState)
         return {};
 
-    auto& ReplicationBytes = PlayerState->UniqueId.ReplicationBytes;
-    auto& LegacyReplicationBytes = PlayerState->UniqueID.ReplicationBytes;
-    auto Bytes = ReplicationBytes.Num() >= 18 ? &ReplicationBytes : &LegacyReplicationBytes;
-    if (Bytes->Num() < 18)
-        return {};
-
-    std::string AccountId;
-    AccountId.reserve(32);
-    for (int Index = 2; Index < 18; Index++)
+    auto ExtractAccountId = [](const TArray<uint8>& Bytes)
     {
-        char HexByte[3]{};
-        sprintf_s(HexByte, sizeof(HexByte), "%02x", (*Bytes)[Index]);
-        AccountId += HexByte;
-    }
-    return AccountId;
+        if (Bytes.Num() < 18)
+            return std::string{};
+
+        std::string AccountId;
+        AccountId.reserve(32);
+        bool HasNonZeroByte = false;
+        for (int Index = 2; Index < 18; Index++)
+        {
+            HasNonZeroByte |= Bytes[Index] != 0;
+            char HexByte[3]{};
+            sprintf_s(HexByte, sizeof(HexByte), "%02x", Bytes[Index]);
+            AccountId += HexByte;
+        }
+        return HasNonZeroByte ? AccountId : std::string{};
+    };
+
+    if (PlayerState->HasUniqueId())
+        if (auto AccountId = ExtractAccountId(PlayerState->UniqueId.ReplicationBytes); !AccountId.empty())
+            return AccountId;
+
+    if (PlayerState->HasUniqueID())
+        return ExtractAccountId(PlayerState->UniqueID.ReplicationBytes);
+
+    return {};
 }
 
 extern uint64_t ApplyCharacterCustomization;
@@ -63,7 +74,12 @@ namespace
         auto AccountId = GetEpicAccountId(PlayerState);
         if (AccountId.empty())
         {
-            Diagnostics::Log("[gs-backend] could not extract player accountId");
+            const auto HasUniqueId = PlayerState && PlayerState->HasUniqueId();
+            const auto HasLegacyUniqueId = PlayerState && PlayerState->HasUniqueID();
+            const auto UniqueIdBytes = HasUniqueId ? PlayerState->UniqueId.ReplicationBytes.Num() : -1;
+            const auto LegacyUniqueIdBytes = HasLegacyUniqueId ? PlayerState->UniqueID.ReplicationBytes.Num() : -1;
+            Diagnostics::Log("[gs-backend] could not extract player accountId | UniqueId property=%d bytes=%d | UniqueID property=%d bytes=%d",
+                             HasUniqueId, UniqueIdBytes, HasLegacyUniqueId, LegacyUniqueIdBytes);
             return false;
         }
 
@@ -1705,6 +1721,15 @@ void AFortGameMode::HandleStartingNewPlayer_(UObject* Context, FFrame& Stack)
     PlayerState->WorldPlayerId = WorldPlayerId;
 
     callOG(GameMode, Stack.GetCurrentNativeFunction(), HandleStartingNewPlayer, NewPlayer);
+    if (BackendSnapshot.empty() && !GetEpicAccountId(PlayerState).empty())
+    {
+        FetchPlayerCosmeticLoadout(NewPlayer, BackendSnapshot);
+        if (!BackendSnapshot.empty())
+        {
+            auto Pawn = NewPlayer->HasMyFortPawn() ? NewPlayer->MyFortPawn : nullptr;
+            ApplyPlayerCosmeticParts(NewPlayer, Pawn);
+        }
+    }
     LoadDailyQuestsFromSnapshot(NewPlayer, BackendSnapshot);
     if (auto QuestManager = NewPlayer->GetQuestManager(1))
         Diagnostics::Log("[gs-backend] jogador conectado | account=%s | quests no GS=%d",
