@@ -82,7 +82,8 @@ namespace Diagnostics
                 DiagnosticsLines.pop_front();
             DiagnosticsLines.push_back(Line);
         }
-        printf("%s\n", Line.c_str());
+        if (FConfiguration::bUseStdoutLog || GetConsoleWindow())
+            printf("%s\n", Line.c_str());
     }
 
     std::vector<std::string> GetRecentLogs()
