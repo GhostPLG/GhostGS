@@ -1,6 +1,10 @@
+GhostGS is a GPL-3.0 fork of [Core V2](https://github.com/PongooDev/CoreV2), retaining the upstream license, notices, and history. The upstream project lists Fortnite 6.31 (CL-4573279) as in development; this fork does not claim that build is fully supported.
+
+The Windows x64 release workflow builds and attaches the server, client, and redirect DLLs to a GitHub Release on pushes to `main`.
+
 <h1>
   <img src="https://github.com/user-attachments/assets/28d73a41-1c02-4343-8365-3a19d0771d48" width="50" height="50" align="absmiddle" />
-  &nbsp;Core V2
+  &nbsp;GhostGS
 </h1>
 
 **Core V2** is a community made Fortnite gameserver focused on recreating original behavior as accurately as possible, starting from the earliest x64 Fortnite builds and moving forward one build at a time. It is a full rewrite of [Core](https://github.com/PongooDev/Core), built to be more accurate and more maintainable across many builds.
