@@ -1,174 +1,29 @@
-GhostGS is a GPL-3.0 fork of [Core V2](https://github.com/PongooDev/CoreV2), retaining the upstream license, notices, and history. The upstream project lists Fortnite 6.31 (CL-4573279) as in development; this fork does not claim that build is fully supported.
+# GhostGS
 
-The Windows x64 release workflow builds and attaches the server, client, and redirect DLLs to a [GhostGS GitHub Release](https://github.com/GhostPLG/GhostGS/releases) on pushes to `main`.
+GhostGS is a Fortnite gameserver based on [Erbium](https://github.com/plooshi/Erbium), using upstream commit `f59521dbc3ea53cbee3d74e31f7967007d207ba0`.
 
-<h1>
-  <img src="https://github.com/user-attachments/assets/28d73a41-1c02-4343-8365-3a19d0771d48" width="50" height="50" align="absmiddle" />
-  &nbsp;GhostGS
-</h1>
+This fork retains Erbium's GPL-3.0 license and upstream notices. Credit to plooshi and the Erbium contributors; credit to Milxnor for the Finder code noted upstream.
 
-**GhostGS** is a community Fortnite gameserver derived from Core V2, which recreates original behavior across Fortnite builds. This repository does not include Fortnite game files or a launcher.
+Each push to `main` builds the x64 server and client DLLs and publishes them as a new [GitHub Release](https://github.com/GhostPLG/GhostGS/releases).
 
-The upstream Core V2 project runs inside Fortnite to provide server-side systems for loading maps, accepting players, running matches, and gameplay. Backend integration is a separate component and is not included in this repository.
+[**Join our Discord!**](https://discord.gg/WxNEGBxfKq)
 
-> GhostGS is an independent community project. It is not affiliated with, endorsed by, or supported by Epic Games.
+## Features
+- **Version support**: Erbium supports version 3.4 (season 3) to 19.40 (chapter 3 season 1).
+> Erbium also has partial support for 1.7.2 (season 0) to 3.3 (season 3) & 20.00 (chapter 3 season 2) to 30.00 (chapter 5 season 3)
+- **Easy to use**: Erbium is designed to be fast & easy to configure for new users.
 
-**Please refer to the [Contributing](#contributing) section before posting an issue, Thank you!**
+## To-do
+- **Creative**
+- **XP**
+- **Quests**
 
-[Upstream Core Discord](https://discord.gg/auzEaKs7AS) · [Report an issue](https://github.com/GhostPLG/GhostGS/issues)
+## Configuration
+- In order to change options, go to Erbium/Public/Configuration.h & configure to your liking!
 
-## 📥[Download](https://github.com/GhostPLG/GhostGS/releases)📥
+> If you have issues with a specific version or find a bug, please make an issue.
 
-Looking for the original Core? Core V1 is still available at [PongooDev/Core](https://github.com/PongooDev/Core).
+> Contributions are highly appreciated!
 
-## Version support
-
-| Status | Fortnite versions |
-| --- | --- |
-| Full support ✅ | 1.1 – 6.30 |
-| In development 🚧 | 6.31 |
-
-Core V2 moves forward one build at a time and skips builds nobody has a copy of, so full support is always one range: every build from the first version to the last one listed. Fortnite 3.4 and 4.3 are not supported: nobody has a copy of them, so the range skips them.
-
-<details>
-<summary>Every build by changelist</summary>
-
-| Fortnite version | Build | Status |
-| --- | --- | --- |
-| 1.1 | Cert CL-3532353 | Full support ✅ |
-| 1.2 | Release-Cert CL-3541083 | Full support ✅ |
-| 1.7.2 | Release-Cert CL-3700114 | Full support ✅ |
-| 1.8 | Release-Live CL-3724489 | Full support ✅ |
-| 1.8.1 | Release-Cert CL-3729133 | Full support ✅ |
-| 1.8.2 | Release-Cert CL-3741772 | Full support ✅ |
-| 1.9 | Release-Live CL-3757339 | Full support ✅ |
-| 1.9.1 | Release-Cert CL-3775276 | Full support ✅ |
-| 1.10 | Release-Cert CL-3790078 | Full support ✅ |
-| 1.11 | Release-Cert CL-3807424 | Full support ✅ |
-| 2.1 | Release-Cert CL-3825894 | Full support ✅ |
-| 2.2 | Release-Cert CL-3841827 | Full support ✅ |
-| 2.3 | Release-Cert CL-3847564 | Full support ✅ |
-| 2.4 | Release-Cert CL-3858292 | Full support ✅ |
-| 2.4.2 | Release-Next CL-3870737 | Full support ✅ |
-| 2.5 | Release-2.5 CL-3889387 | Full support ✅ |
-| 3.0 | Release-3.0.0 CL-3901517 | Full support ✅ |
-| 3.1 | Release-3.1 CL-3915963 | Full support ✅ |
-| 3.1.1 | Release-3.1 CL-3917250 | Full support ✅ |
-| 3.2 | Release-3.2 CL-3935073 | Full support ✅ |
-| 3.3 | Release-3.3 CL-3942182 | Full support ✅ |
-| 3.5.1 | Release-3.5 CL-4000805 | Full support ✅ |
-| 3.5.2 | Release-3.5 CL-4008490 | Full support ✅ |
-| 3.6 | Release-3.6 CL-4019403 | Full support ✅ |
-| 4.0 | Release-4.0 CL-4039451 | Full support ✅ |
-| 4.1 | Release-4.1 CL-4053532 | Full support ✅ |
-| 4.2 | Release-4.2 CL-4072250 | Full support ✅ |
-| 4.4.0 | Release-4.4 CL-4117433 | Full support ✅ |
-| 4.4.1 | Release-4.4 CL-4127312 | Full support ✅ |
-| 4.4.2 | Release-4.4.x CL-4132537 | Full support ✅ |
-| 4.5 | Release-4.5 CL-4159770 | Full support ✅ |
-| 4.5 | Release-4.5 CL-4166199 | Full support ✅ |
-| 5.0 | Release-5.0 CL-4204761 | Full support ✅ |
-| 5.0 | Release-5.0 CL-4214610 | Full support ✅ |
-| 5.10 | Release-5.10 CL-4225813 | Full support ✅ |
-| 5.10 | Release-5.10 CL-4240749 | Full support ✅ |
-| 5.21 | Release-5.21 CL-4288479 | Full support ✅ |
-| 5.30 | Release-5.30 CL-4305896 | Full support ✅ |
-| 5.40 | Release-5.40 CL-4352937 | Full support ✅ |
-| 5.41 | Release-5.41 CL-4363240 | Full support ✅ |
-| 6.00 | Release-6.00 CL-4395664 | Full support ✅ |
-| 6.00 | Release-6.00 CL-4402180 | Full support ✅ |
-| 6.01 | Release-6.01 CL-4417689 | Full support ✅ |
-| 6.01 | Release-6.01 CL-4424678 | Full support ✅ |
-| 6.02 | Release-6.02 CL-4442095 | Full support ✅ |
-| 6.02 | Release-6.02 CL-4461277 | Full support ✅ |
-| 6.10 | Release-6.10 CL-4464155 | Full support ✅ |
-| 6.10 | Release-6.10 CL-4476098 | Full support ✅ |
-| 6.10 | Release-6.10 CL-4480234 | Full support ✅ |
-| 6.20 | Release-6.20 CL-4497486 | Full support ✅ |
-| 6.21 | Release-6.21 CL-4526925 | Full support ✅ |
-| 6.22 | Release-6.22 CL-4543176 | Full support ✅ |
-| 6.30 | Release-6.30 CL-4573096 | Full support ✅ |
-| 6.31 | Release-6.31 CL-4573279 | In development 🚧 |
-
-</details>
-
-- **Full support** means that a version is actively supported. We prioritize fixes and missing functionality for fully supported versions before adding support for other versions.
-- **In development** means work on the version has started, but it is not fully working yet.
-- **Unsupported** means the build may start and have some gameplay features, but it may be unfinished, untested, or have game-breaking bugs.
-- When work begins on a new Fortnite version, we aim to make it fully functional before moving on to another version.
-
-## Contents
-
-- [Building](#building)
-- [Contributing](#contributing)
-- [Credits](#credits)
-- [License](#license)
-
-## Building
-
-### Requirements
-- Windows 10 or Windows 11
-- Visual Studio 2022 or 2026
-- Desktop development with C++ workload
-- MSVC v143 C++ x64/x86 build tools
-- Windows 10 SDK
-
-### Build steps
-1. Clone the repository:
-
-   ```
-   git clone --recursive https://github.com/GhostPLG/GhostGS
-
-   cd GhostGS
-   ```
-
-2. Open [`Core.sln`](Core.sln) in Visual Studio
-3. Select **Release** and **x64** in the solution toolbar.
-4. Build it
-
-The build writes three DLLs to `x64\Release`: `Core.dll` (the server), `CoreClient.dll` (the client), and `CoreRedirect.dll` (redirects game HTTP traffic to Core-Backend). The redirect has not been adapted to GhostBackend-V2 yet.
-
-## Contributing
-
-Contributions are welcome, whether it is code or an issue report.
-
-### Issue reports
-
-Include all of the following in a report if possible:
-
-1. Fortnite version and CL
-2. Playlist
-3. Number of players
-4. Reproduction steps
-5. Screenshots
-6. Server log
-7. Core commit
-8. Anything else that may help
-
-**Issues that are overly broad, contain only a crash log without context, or provide too little information to accurately show or reproduce the problem may be closed until the required details are supplied.**
-
-### Code
-
-Before submitting code:
-
-1. Keep unrelated fixes in separate pull requests
-2. Keep your code clean and readable. You may create helper functions if needed for better readability.
-3. Test your code and include the versions you tested it on.
-4. Necessary or helpful logging is encouraged however remove excessive or temporary logging from the final change.
-5. Avoid broad version gates unless the compatibility boundary is understood and supported by testing or other evidence.
-
-**Pull requests may be declined when they are inaccurate, untested, overly broad, unrelated to the reported issue, or harmful to other supported versions.**
-
-## Credits
-
-- **PongooDev** — project creator and primary maintainer
-- [Core contributors](https://github.com/PongooDev/CoreV2/graphs/contributors)
-
-For more help, join the [Core Discord](https://discord.gg/auzEaKs7AS).
-
-## License
-
-Core V2 is licensed under the [GNU General Public License v3.0](LICENSE).
-
----
-If you use Core in another project, please credit the Core project.
+> If you use Erbium-derived code, please give the upstream project credit.
+> Credit to Milxnor for parts of Finders.cpp.
