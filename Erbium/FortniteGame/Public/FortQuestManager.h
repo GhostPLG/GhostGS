@@ -145,6 +145,7 @@ class UFortQuestItemDefinition : public UFortItem
 public:
     UCLASS_COMMON_MEMBERS(UFortQuestItemDefinition);
 
+    DEFINE_FUNC(CreateTemporaryItemInstanceBP, UFortItem*);
     DEFINE_PROP(Objectives, TArray<FFortMcpQuestObjectiveInfo>);
     DEFINE_BITFIELD_PROP(bAthenaUpdateObjectiveOncePerMatch);
     DEFINE_BITFIELD_PROP(bAthenaMustCompleteInSingleMatch);

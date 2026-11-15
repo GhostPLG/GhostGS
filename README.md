@@ -21,6 +21,11 @@ Each push to `main` builds the x64 server and client DLLs and publishes them as 
 ## Configuration
 - In order to change options, go to Erbium/Public/Configuration.h & configure to your liking!
 
+## GhostBackend integration
+- When using the matching GhostBackend, run the backend and gameserver on the same machine at `127.0.0.1:3551`.
+- The gameserver reads the player's Athena loadout and daily quests through the backend's loopback-only internal API, then reports daily quest progress back to the profile.
+- Do not forward `/fortnite/api/internal/gs/` through a public reverse proxy.
+
 > If you have issues with a specific version or find a bug, please make an issue.
 
 > Contributions are highly appreciated!

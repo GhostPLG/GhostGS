@@ -2,6 +2,66 @@
 #include "../Public/FortQuestManager.h"
 #include "../Public/FortGameMode.h"
 #include <unordered_set>
+#include <thread>
+
+namespace
+{
+    void ReportDailyQuestProgress(
+        AFortPlayerControllerAthena* PlayerController,
+        UFortQuestItemDefinition* QuestDefinition,
+        FName BackendName,
+        int32 Progress)
+    {
+        if (!PlayerController || !PlayerController->PlayerState || !QuestDefinition)
+            return;
+
+        auto QuestName = QuestDefinition->Name.ToString();
+        if (QuestName.rfind("AthenaDaily", 0) != 0)
+            return;
+
+        auto ObjectiveName = BackendName.ToString();
+        if (QuestName.find_first_not_of("abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789_") != std::string::npos ||
+            ObjectiveName.find_first_not_of("abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789_") != std::string::npos)
+            return;
+
+        auto AccountId = GetEpicAccountId(PlayerController->PlayerState);
+        if (AccountId.empty())
+            return;
+
+        const auto Url = "http://127.0.0.1:3551/fortnite/api/internal/gs/profiles/" + AccountId + "/quest-progress";
+        const auto TemplateId = "Quest:" + std::string(QuestName.begin(), QuestName.end());
+        const auto Payload = "{\"templateId\":\"" + TemplateId + "\",\"objective\":\"" +
+                             std::string(ObjectiveName.begin(), ObjectiveName.end()) + "\",\"progress\":" +
+                             std::to_string(Progress) + "}";
+        const auto Objective = std::string(ObjectiveName.begin(), ObjectiveName.end());
+        std::thread([Url, Payload, AccountId, TemplateId, Objective]()
+        {
+            auto Curl = curl_easy_init();
+            if (!Curl)
+            {
+                printf("[gs-backend] failed to initialize quest progress request\n");
+                return;
+            }
+            auto Headers = curl_slist_append(nullptr, "Content-Type: application/json");
+            curl_easy_setopt(Curl, CURLOPT_URL, Url.c_str());
+            curl_easy_setopt(Curl, CURLOPT_POST, 1L);
+            curl_easy_setopt(Curl, CURLOPT_POSTFIELDS, Payload.c_str());
+            curl_easy_setopt(Curl, CURLOPT_HTTPHEADER, Headers);
+            curl_easy_setopt(Curl, CURLOPT_CONNECTTIMEOUT_MS, 250L);
+            curl_easy_setopt(Curl, CURLOPT_TIMEOUT_MS, 750L);
+
+            const auto Result = curl_easy_perform(Curl);
+            long HttpStatus = 0;
+            curl_easy_getinfo(Curl, CURLINFO_RESPONSE_CODE, &HttpStatus);
+            curl_slist_free_all(Headers);
+            curl_easy_cleanup(Curl);
+
+            if (Result != CURLE_OK || (HttpStatus != 204 && HttpStatus != 200))
+                printf("[gs-backend] failed to save quest | account=%s | quest=%s | objective=%s | http=%ld | error=%s\n",
+                       AccountId.c_str(), TemplateId.c_str(), Objective.c_str(), HttpStatus, curl_easy_strerror(Result));
+        }).detach();
+    }
+}
 
 struct FParseConditionResult
 {
@@ -295,6 +355,11 @@ void ProgressQuest(UFortQuestManager* _this, AFortPlayerControllerAthena* Player
     {
         PlayerController->XPComponent->QuestObjectiveUpdated(PlayerController, QuestDefinition, BackendName, Count, AcheivedCount + Count == QuestObjective->RequiredCount, bAllObjectivesCompleted);
     }
+
+    const auto UpdatedProgress = AcheivedCount + Count < QuestObjective->RequiredCount
+                                     ? AcheivedCount + Count
+                                     : QuestObjective->RequiredCount;
+    ReportDailyQuestProgress(PlayerController, QuestDefinition, BackendName, UpdatedProgress);
 }
 
 std::unordered_map<AActor*, std::unordered_map<int32_t, int32_t>> CountThresholdMap;

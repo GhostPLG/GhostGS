@@ -22,6 +22,344 @@
 #include "../Public/LevelStreamingDynamic.h"
 #include "../Public/FortAthenaSpawningPolicyManager.h"
 #include <random>
+#include <sstream>
+
+std::string GetEpicAccountId(AFortPlayerStateAthena* PlayerState)
+{
+    if (!PlayerState)
+        return {};
+
+    auto& ReplicationBytes = PlayerState->UniqueId.ReplicationBytes;
+    auto& LegacyReplicationBytes = PlayerState->UniqueID.ReplicationBytes;
+    auto Bytes = ReplicationBytes.Num() >= 18 ? &ReplicationBytes : &LegacyReplicationBytes;
+    if (Bytes->Num() < 18)
+        return {};
+
+    std::string AccountId;
+    AccountId.reserve(32);
+    for (int Index = 2; Index < 18; Index++)
+    {
+        char HexByte[3]{};
+        sprintf_s(HexByte, sizeof(HexByte), "%02x", (*Bytes)[Index]);
+        AccountId += HexByte;
+    }
+    return AccountId;
+}
+
+namespace
+{
+    size_t AppendHttpResponse(void* Contents, size_t Size, size_t Count, void* UserData)
+    {
+        auto Response = static_cast<std::string*>(UserData);
+        Response->append(static_cast<const char*>(Contents), Size * Count);
+        return Size * Count;
+    }
+
+    bool FetchPlayerCosmeticLoadout(AFortPlayerControllerAthena* PlayerController, std::string& SnapshotResponse)
+    {
+        auto PlayerState = PlayerController ? PlayerController->PlayerState->Cast<AFortPlayerStateAthena>() : nullptr;
+        auto AccountId = GetEpicAccountId(PlayerState);
+        if (AccountId.empty())
+        {
+            printf("[gs-backend] could not extract player accountId\n");
+            return false;
+        }
+
+        auto Curl = curl_easy_init();
+        if (!Curl)
+        {
+            printf("[gs-backend] failed to initialize profile request | account=%s\n", AccountId.c_str());
+            return false;
+        }
+
+        std::string Response;
+        const auto Url = "http://127.0.0.1:3551/fortnite/api/internal/gs/profiles/" + AccountId + "/snapshot";
+        curl_easy_setopt(Curl, CURLOPT_URL, Url.c_str());
+        curl_easy_setopt(Curl, CURLOPT_CONNECTTIMEOUT_MS, 500L);
+        curl_easy_setopt(Curl, CURLOPT_TIMEOUT_MS, 1500L);
+        curl_easy_setopt(Curl, CURLOPT_WRITEFUNCTION, AppendHttpResponse);
+        curl_easy_setopt(Curl, CURLOPT_WRITEDATA, &Response);
+
+        const auto Result = curl_easy_perform(Curl);
+        long HttpStatus = 0;
+        curl_easy_getinfo(Curl, CURLINFO_RESPONSE_CODE, &HttpStatus);
+        curl_easy_cleanup(Curl);
+
+        if (Result != CURLE_OK || HttpStatus != 200)
+        {
+            printf("[gs-backend] snapshot falhou | account=%s | http=%ld | erro=%s\n",
+                   AccountId.c_str(), HttpStatus, curl_easy_strerror(Result));
+            return false;
+        }
+
+        SnapshotResponse = Response;
+        std::string SnapshotAccountId;
+        std::string CharacterId;
+        std::string BackpackId;
+        std::string PickaxeId;
+        int SnapshotQuestCount = 0;
+        std::istringstream Snapshot(Response);
+        std::string Line;
+        while (std::getline(Snapshot, Line))
+        {
+            const auto Separator = Line.find('=');
+            if (Separator == std::string::npos)
+                continue;
+
+            const auto Key = Line.substr(0, Separator);
+            const auto Value = Line.substr(Separator + 1);
+            if (Key == "account") SnapshotAccountId = Value;
+            else if (Key == "character") CharacterId = Value;
+            else if (Key == "backpack") BackpackId = Value;
+            else if (Key == "pickaxe") PickaxeId = Value;
+            else if (Key == "quest") SnapshotQuestCount++;
+        }
+
+        if (SnapshotAccountId != AccountId)
+        {
+            printf("[gs-backend] account mismatch in profile snapshot | expected=%s | received=%s\n",
+                   AccountId.c_str(), SnapshotAccountId.c_str());
+            return false;
+        }
+
+        auto ResolvePath = [](const std::string& TemplateId, const char* ExpectedType, const wchar_t* Folder) -> std::wstring
+        {
+            const auto Separator = TemplateId.find(':');
+            if (Separator == std::string::npos || TemplateId.substr(0, Separator) != ExpectedType)
+                return {};
+
+            const auto AssetName = TemplateId.substr(Separator + 1);
+            if (AssetName.empty() || AssetName.find_first_not_of("abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789_") != std::string::npos)
+                return {};
+
+            std::wstring WideName(AssetName.begin(), AssetName.end());
+            std::wstring Path = Folder;
+            Path += WideName;
+            Path += L".";
+            Path += WideName;
+            return Path;
+        };
+
+        const auto CharacterPath = ResolvePath(CharacterId, "AthenaCharacter", L"/Game/Athena/Items/Cosmetics/Characters/");
+        const auto BackpackPath = ResolvePath(BackpackId, "AthenaBackpack", L"/Game/Athena/Items/Cosmetics/Backpacks/");
+        const auto PickaxePath = ResolvePath(PickaxeId, "AthenaPickaxe", L"/Game/Athena/Items/Cosmetics/Pickaxes/");
+
+        auto Character = CharacterPath.empty() ? nullptr : const_cast<UAthenaCharacterItemDefinition*>(FindObject<UAthenaCharacterItemDefinition>(CharacterPath.c_str()));
+        auto Backpack = BackpackPath.empty() ? nullptr : const_cast<UAthenaCharacterPartItemDefinition*>(FindObject<UAthenaCharacterPartItemDefinition>(BackpackPath.c_str()));
+        auto Pickaxe = PickaxePath.empty() ? nullptr : const_cast<UAthenaPickaxeItemDefinition*>(FindObject<UAthenaPickaxeItemDefinition>(PickaxePath.c_str()));
+        auto FindAssetName = [](const std::string& TemplateId)
+        {
+            const auto Separator = TemplateId.find(':');
+            return Separator == std::string::npos ? std::string{} : TemplateId.substr(Separator + 1);
+        };
+        const auto CharacterName = FindAssetName(CharacterId);
+        const auto BackpackName = FindAssetName(BackpackId);
+        const auto PickaxeName = FindAssetName(PickaxeId);
+        if (!Character && !CharacterName.empty())
+            Character = const_cast<UAthenaCharacterItemDefinition*>(TUObjectArray::FindObject<UAthenaCharacterItemDefinition>(CharacterName));
+        if (!Backpack && !BackpackName.empty())
+            Backpack = const_cast<UAthenaCharacterPartItemDefinition*>(TUObjectArray::FindObject<UAthenaCharacterPartItemDefinition>(BackpackName));
+        if (!Pickaxe && !PickaxeName.empty())
+            Pickaxe = const_cast<UAthenaPickaxeItemDefinition*>(TUObjectArray::FindObject<UAthenaPickaxeItemDefinition>(PickaxeName));
+
+        if (PlayerController->HasCosmeticLoadoutPC())
+        {
+            if (Character) PlayerController->CosmeticLoadoutPC.Character = Character;
+            if (Backpack) PlayerController->CosmeticLoadoutPC.Backpack = Backpack;
+            if (Pickaxe) PlayerController->CosmeticLoadoutPC.Pickaxe = Pickaxe;
+        }
+        if (PlayerController->HasCustomizationLoadout())
+        {
+            if (Character) PlayerController->CustomizationLoadout.Character = Character;
+            if (Backpack) PlayerController->CustomizationLoadout.Backpack = Backpack;
+            if (Pickaxe) PlayerController->CustomizationLoadout.Pickaxe = Pickaxe;
+        }
+
+        printf("[gs-backend] snapshot | account=%s | quests=%d | character=%s | backpack=%s | pickaxe=%s\n",
+               AccountId.c_str(), SnapshotQuestCount,
+               Character ? CharacterId.c_str() : "not loaded",
+               Backpack ? BackpackId.c_str() : "not loaded", Pickaxe ? PickaxeId.c_str() : "not loaded");
+        return true;
+    }
+
+    void LoadDailyQuestsFromSnapshot(AFortPlayerControllerAthena* PlayerController, const std::string& Response)
+    {
+        if (!PlayerController || Response.empty())
+            return;
+
+        auto QuestManager = PlayerController->GetQuestManager(1);
+        if (!QuestManager)
+        {
+            printf("[gs-backend] quest manager unavailable for profile quests\n");
+            return;
+        }
+
+        auto IsSafeIdentifier = [](const std::string& Value)
+        {
+            return !Value.empty() &&
+                   Value.find_first_not_of("abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789_") == std::string::npos;
+        };
+        int AddedQuests = 0;
+        std::istringstream Snapshot(Response);
+        std::string Line;
+        while (std::getline(Snapshot, Line))
+        {
+            if (Line.rfind("quest=", 0) != 0)
+                continue;
+
+            const auto FirstSeparator = Line.find('|', 6);
+            const auto SecondSeparator = FirstSeparator == std::string::npos ? std::string::npos : Line.find('|', FirstSeparator + 1);
+            if (FirstSeparator == std::string::npos || SecondSeparator == std::string::npos)
+                continue;
+
+            const auto ItemId = Line.substr(6, FirstSeparator - 6);
+            const auto TemplateId = Line.substr(FirstSeparator + 1, SecondSeparator - FirstSeparator - 1);
+            constexpr auto QuestPrefix = "Quest:";
+            if (ItemId.size() != 32 ||
+                ItemId.find_first_not_of("0123456789abcdefABCDEF") != std::string::npos ||
+                TemplateId.rfind(QuestPrefix, 0) != 0)
+                continue;
+
+            const auto AssetName = TemplateId.substr(sizeof(QuestPrefix) - 1);
+            if (AssetName.rfind("AthenaDaily", 0) != 0 || !IsSafeIdentifier(AssetName))
+                continue;
+
+            bool AlreadyLoaded = false;
+            for (auto& ExistingQuest : QuestManager->CurrentQuests)
+            {
+                if (!ExistingQuest || !ExistingQuest->ItemDefinition)
+                    continue;
+
+                const auto ExistingName = ExistingQuest->ItemDefinition->Name.ToString();
+                if (std::string(ExistingName.begin(), ExistingName.end()) == AssetName)
+                {
+                    AlreadyLoaded = true;
+                    break;
+                }
+            }
+            if (AlreadyLoaded)
+                continue;
+
+            const auto WideAssetName = std::wstring(AssetName.begin(), AssetName.end());
+            const auto DailyQuestPath = std::wstring(L"/Game/Athena/Items/Quests/DailyQuests/") + WideAssetName + L"." + WideAssetName;
+            auto QuestDefinition = const_cast<UFortQuestItemDefinition*>(FindObject<UFortQuestItemDefinition>(DailyQuestPath.c_str()));
+            if (!QuestDefinition)
+            {
+                const auto FallbackPath = std::wstring(L"/Game/Athena/Items/Quests/") + WideAssetName + L"." + WideAssetName;
+                QuestDefinition = const_cast<UFortQuestItemDefinition*>(FindObject<UFortQuestItemDefinition>(FallbackPath.c_str()));
+            }
+            if (!QuestDefinition)
+            {
+                printf("[gs-backend] daily quest definition not found | template=%s\n", TemplateId.c_str());
+                continue;
+            }
+
+            auto QuestInstance = QuestDefinition->CreateTemporaryItemInstanceBP(1, 1);
+            auto QuestItem = QuestInstance ? QuestInstance->Cast<UFortQuestItem>() : nullptr;
+            if (!QuestItem)
+            {
+                printf("[gs-backend] failed to create daily quest instance | template=%s\n", TemplateId.c_str());
+                continue;
+            }
+            QuestItem->ItemDefinition = QuestDefinition;
+            if (QuestItem->Objectives.Num() == 0)
+            {
+                printf("[gs-backend] daily quest instance has no objectives | template=%s\n", TemplateId.c_str());
+                continue;
+            }
+
+            std::unordered_map<std::string, int32> ObjectiveProgress;
+            std::istringstream Objectives(Line.substr(SecondSeparator + 1));
+            std::string ObjectiveEntry;
+            while (std::getline(Objectives, ObjectiveEntry, ','))
+            {
+                const auto Separator = ObjectiveEntry.find(':');
+                if (Separator == std::string::npos)
+                    continue;
+
+                const auto ObjectiveName = ObjectiveEntry.substr(0, Separator);
+                const auto ProgressText = ObjectiveEntry.substr(Separator + 1);
+                if (!IsSafeIdentifier(ObjectiveName) || ProgressText.empty() ||
+                    ProgressText.find_first_not_of("0123456789") != std::string::npos)
+                    continue;
+
+                try
+                {
+                    ObjectiveProgress[ObjectiveName] = std::stoi(ProgressText);
+                }
+                catch (const std::out_of_range&)
+                {
+                    continue;
+                }
+            }
+
+            for (auto& Objective : QuestItem->Objectives)
+            {
+                if (!Objective)
+                    continue;
+                const auto BackendObjectiveName = Objective->BackendName.ToString();
+                const auto ObjectiveName = std::string(
+                    BackendObjectiveName.begin(), BackendObjectiveName.end());
+                const auto Progress = ObjectiveProgress.find(ObjectiveName);
+                if (Progress != ObjectiveProgress.end())
+                    Objective->AchievedCount = Progress->second < Objective->RequiredCount
+                                                   ? Progress->second
+                                                   : Objective->RequiredCount;
+            }
+
+            QuestManager->CurrentQuests.Add(QuestItem);
+            AddedQuests++;
+        }
+
+        printf("[gs-backend] daily quests loaded | account=%s | added=%d | total=%d\n",
+               GetEpicAccountId(PlayerController->PlayerState).c_str(),
+               AddedQuests, QuestManager->CurrentQuests.Num());
+    }
+
+    void ApplyPlayerCosmeticParts(AFortPlayerControllerAthena* PlayerController, AFortPlayerPawnAthena* Pawn)
+    {
+        if (!PlayerController || !Pawn)
+            return;
+
+        const FFortAthenaLoadout* Loadout = nullptr;
+        if (PlayerController->HasCosmeticLoadoutPC())
+            Loadout = &PlayerController->CosmeticLoadoutPC;
+        else if (PlayerController->HasCustomizationLoadout())
+            Loadout = &PlayerController->CustomizationLoadout;
+        if (!Loadout)
+            return;
+
+        std::unordered_map<uint8, const UCustomCharacterPart*> Parts;
+
+        if (Loadout->Character && Loadout->Character->HeroDefinition)
+        {
+            if (PlayerController->PlayerState->HasHeroType())
+                PlayerController->PlayerState->HeroType = Loadout->Character->HeroDefinition;
+
+            for (auto& SpecializationSoft : Loadout->Character->HeroDefinition->Specializations)
+            {
+                auto Specialization = SpecializationSoft.Get();
+                if (!Specialization)
+                    continue;
+
+                for (auto& PartSoft : Specialization->CharacterParts)
+                {
+                    auto Part = PartSoft.Get();
+                    if (Part)
+                        Parts[Part->CharacterPartType] = Part;
+                }
+            }
+        }
+
+        if (Loadout->Backpack)
+            for (auto& Part : Loadout->Backpack->CharacterParts)
+                if (Part)
+                    Parts[Part->CharacterPartType] = Part;
+
+        for (const auto& [PartType, Part] : Parts)
+            Pawn->ServerChoosePart(PartType, const_cast<UCustomCharacterPart*>(Part));
+    }
+}
 
 void ShowFoundation(const ABuildingFoundation* Foundation)
 {
@@ -969,6 +1307,7 @@ void AFortGameMode::SpawnDefaultPawnFor(UObject* Context, FFrame& Stack, AActor*
         if (PlayerStart)
             Pawn = (AFortPlayerPawnAthena*)UWorld::SpawnActor(GameMode->GetDefaultPawnClassForController(NewPlayer), PlayerStart->GetTransform(), NewPlayer, 3);
     }
+    ApplyPlayerCosmeticParts(NewPlayer, Pawn);
     // they only stripped it on athena for some reason
     /*static auto FortGMSpawnDefaultPawnFor = (AFortPlayerPawnAthena * (*)(AFortGameMode*, AFortPlayerControllerAthena*, AActor*))
     DefaultObjImpl("FortGameMode")->Vft[SpawnDefaultPawnForIdx]; Pawn = FortGMSpawnDefaultPawnFor(GameMode, NewPlayer, StartSpot);
@@ -1307,6 +1646,9 @@ void AFortGameMode::HandleStartingNewPlayer_(UObject* Context, FFrame& Stack)
         free(Member);
     }
 
+    std::string BackendSnapshot;
+    FetchPlayerCosmeticLoadout(NewPlayer, BackendSnapshot);
+
     // if (NewPlayer->HasbBuildFree())
     //     NewPlayer->bBuildFree = FConfiguration::bInfiniteMats;
 
@@ -1321,7 +1663,11 @@ void AFortGameMode::HandleStartingNewPlayer_(UObject* Context, FFrame& Stack)
 
     PlayerState->WorldPlayerId = WorldPlayerId;
 
-    return callOG(GameMode, Stack.GetCurrentNativeFunction(), HandleStartingNewPlayer, NewPlayer);
+    callOG(GameMode, Stack.GetCurrentNativeFunction(), HandleStartingNewPlayer, NewPlayer);
+    LoadDailyQuestsFromSnapshot(NewPlayer, BackendSnapshot);
+    if (auto QuestManager = NewPlayer->GetQuestManager(1))
+        printf("[gs-backend] jogador conectado | account=%s | quests no GS=%d\n",
+               GetEpicAccountId(PlayerState).c_str(), QuestManager->CurrentQuests.Num());
 }
 
 uint8_t AFortGameMode::PickTeam(AFortGameMode* GameMode, uint8_t PreferredTeam, AFortPlayerControllerAthena* Controller)

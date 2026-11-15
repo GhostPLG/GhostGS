@@ -8,6 +8,8 @@
 #include "FortSafeZoneIndicator.h"
 #include "FortAthenaSpawningPolicyManager.h"
 
+std::string GetEpicAccountId(AFortPlayerStateAthena* PlayerState);
+
 class AFortGameMode : public AActor
 {
 public:
