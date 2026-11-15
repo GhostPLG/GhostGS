@@ -11,9 +11,7 @@
 #include <cstdio>
 #include <cstring>
 #include <d3d11.h>
-#include <deque>
 #include <fstream>
-#include <mutex>
 #include <sstream>
 #pragma comment(lib, "d3d11.lib")
 
@@ -21,30 +19,18 @@ extern IMGUI_IMPL_API LRESULT ImGui_ImplWin32_WndProcHandler(HWND hWnd, UINT msg
 
 namespace
 {
-    struct DiagnosticsState
-    {
-        std::mutex Mutex;
-        std::deque<std::string> Lines;
-    };
-
-    constexpr size_t MaxDiagnosticsLines = 500;
-
-    DiagnosticsState& GetDiagnosticsState()
-    {
-        static auto* State = new DiagnosticsState();
-        return *State;
-    }
+    constexpr std::size_t MaxDiagnosticsLines = 500;
+    constexpr std::size_t DiagnosticsLineCapacity = 2048;
+    SRWLOCK DiagnosticsLock = SRWLOCK_INIT;
+    char DiagnosticsLines[MaxDiagnosticsLines][DiagnosticsLineCapacity]{};
+    std::size_t DiagnosticsStart = 0;
+    std::size_t DiagnosticsCount = 0;
 
     bool CopyRecentLogsToClipboard(HWND Window)
     {
-        std::string Text;
-        for (const auto& Line : Diagnostics::GetRecentLogs())
-        {
-            Text += Line;
-            Text += "\r\n";
-        }
-
-        auto ClipboardData = GlobalAlloc(GMEM_MOVEABLE, Text.size() + 1);
+        const auto LogCount = Diagnostics::GetRecentLogCount();
+        const auto ClipboardCapacity = LogCount * (DiagnosticsLineCapacity + 2) + 1;
+        auto ClipboardData = GlobalAlloc(GMEM_MOVEABLE, ClipboardCapacity);
         if (!ClipboardData)
             return false;
 
@@ -54,7 +40,22 @@ namespace
             GlobalFree(ClipboardData);
             return false;
         }
-        memcpy(ClipboardText, Text.c_str(), Text.size() + 1);
+        std::size_t Offset = 0;
+        for (std::size_t Index = 0; Index < LogCount; Index++)
+        {
+            char Line[DiagnosticsLineCapacity]{};
+            if (!Diagnostics::GetRecentLogLine(Index, Line, sizeof(Line)))
+                continue;
+
+            const auto LineLength = std::strlen(Line);
+            if (Offset + LineLength + 3 > ClipboardCapacity)
+                break;
+            memcpy(ClipboardText + Offset, Line, LineLength);
+            Offset += LineLength;
+            ClipboardText[Offset++] = '\r';
+            ClipboardText[Offset++] = '\n';
+        }
+        ClipboardText[Offset] = '\0';
         GlobalUnlock(ClipboardData);
 
         if (!OpenClipboard(Window))
@@ -85,28 +86,58 @@ namespace Diagnostics
         va_end(Args);
         Buffer[sizeof(Buffer) - 1] = '\0';
 
-        const std::string Line(Buffer);
-        auto& State = GetDiagnosticsState();
+        AcquireSRWLockExclusive(&DiagnosticsLock);
+        std::size_t WriteIndex = 0;
+        if (DiagnosticsCount < MaxDiagnosticsLines)
         {
-            std::lock_guard<std::mutex> Lock(State.Mutex);
-            if (State.Lines.size() == MaxDiagnosticsLines)
-                State.Lines.pop_front();
-            State.Lines.push_back(Line);
+            WriteIndex = (DiagnosticsStart + DiagnosticsCount) % MaxDiagnosticsLines;
+            DiagnosticsCount++;
         }
+        else
+        {
+            WriteIndex = DiagnosticsStart;
+            DiagnosticsStart = (DiagnosticsStart + 1) % MaxDiagnosticsLines;
+        }
+        const auto Length = std::strlen(Buffer);
+        memcpy(DiagnosticsLines[WriteIndex], Buffer, Length + 1);
+        ReleaseSRWLockExclusive(&DiagnosticsLock);
     }
 
-    std::vector<std::string> GetRecentLogs()
+    std::size_t GetRecentLogCount()
     {
-        auto& State = GetDiagnosticsState();
-        std::lock_guard<std::mutex> Lock(State.Mutex);
-        return {State.Lines.begin(), State.Lines.end()};
+        AcquireSRWLockShared(&DiagnosticsLock);
+        const auto Count = DiagnosticsCount;
+        ReleaseSRWLockShared(&DiagnosticsLock);
+        return Count;
+    }
+
+    bool GetRecentLogLine(std::size_t Index, char* Buffer, std::size_t BufferSize)
+    {
+        if (!Buffer || BufferSize == 0)
+            return false;
+
+        AcquireSRWLockShared(&DiagnosticsLock);
+        if (Index >= DiagnosticsCount)
+        {
+            ReleaseSRWLockShared(&DiagnosticsLock);
+            return false;
+        }
+
+        const auto SourceIndex = (DiagnosticsStart + Index) % MaxDiagnosticsLines;
+        const auto Length = std::strlen(DiagnosticsLines[SourceIndex]);
+        const auto CopyLength = Length < BufferSize - 1 ? Length : BufferSize - 1;
+        memcpy(Buffer, DiagnosticsLines[SourceIndex], CopyLength);
+        Buffer[CopyLength] = '\0';
+        ReleaseSRWLockShared(&DiagnosticsLock);
+        return true;
     }
 
     void Clear()
     {
-        auto& State = GetDiagnosticsState();
-        std::lock_guard<std::mutex> Lock(State.Mutex);
-        State.Lines.clear();
+        AcquireSRWLockExclusive(&DiagnosticsLock);
+        DiagnosticsStart = 0;
+        DiagnosticsCount = 0;
+        ReleaseSRWLockExclusive(&DiagnosticsLock);
     }
 }
 
@@ -633,9 +664,13 @@ void GUI::Init()
             ImGui::TextUnformatted(CopyStatus);
             ImGui::TextUnformatted("Reproduce the issue, then copy these recent diagnostics.");
             ImGui::BeginChild("DiagnosticsLogLines", ImVec2(0, 0), ImGuiChildFlags_Borders);
-            const auto Logs = Diagnostics::GetRecentLogs();
-            for (const auto& Line : Logs)
-                ImGui::TextUnformatted(Line.c_str());
+            const auto LogCount = Diagnostics::GetRecentLogCount();
+            for (std::size_t Index = 0; Index < LogCount; Index++)
+            {
+                char Line[DiagnosticsLineCapacity]{};
+                if (Diagnostics::GetRecentLogLine(Index, Line, sizeof(Line)))
+                    ImGui::TextUnformatted(Line);
+            }
             if (ImGui::GetScrollY() >= ImGui::GetScrollMaxY() - 1.0f)
                 ImGui::SetScrollHereY(1.0f);
             ImGui::EndChild();

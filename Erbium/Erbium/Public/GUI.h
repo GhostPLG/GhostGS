@@ -1,7 +1,6 @@
 #pragma once
 
-#include <string>
-#include <vector>
+#include <cstddef>
 
 enum EGSStatus
 {
@@ -21,7 +20,8 @@ public:
 namespace Diagnostics
 {
     void Log(const char* Format, ...);
-    std::vector<std::string> GetRecentLogs();
+    std::size_t GetRecentLogCount();
+    bool GetRecentLogLine(std::size_t Index, char* Buffer, std::size_t BufferSize);
     void Clear();
 }
 
