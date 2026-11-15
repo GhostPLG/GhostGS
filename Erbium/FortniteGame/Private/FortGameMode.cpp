@@ -46,6 +46,8 @@ std::string GetEpicAccountId(AFortPlayerStateAthena* PlayerState)
     return AccountId;
 }
 
+extern uint64_t ApplyCharacterCustomization;
+
 namespace
 {
     size_t AppendHttpResponse(void* Contents, size_t Size, size_t Count, void* UserData)
@@ -335,6 +337,9 @@ namespace
         {
             if (PlayerController->PlayerState->HasHeroType())
                 PlayerController->PlayerState->HeroType = Loadout->Character->HeroDefinition;
+
+            if (ApplyCharacterCustomization)
+                ((void (*)(AActor*, AActor*))ApplyCharacterCustomization)(PlayerController->PlayerState, Pawn);
 
             for (auto& SpecializationSoft : Loadout->Character->HeroDefinition->Specializations)
             {

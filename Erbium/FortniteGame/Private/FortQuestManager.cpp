@@ -10,7 +10,8 @@ namespace
         AFortPlayerControllerAthena* PlayerController,
         UFortQuestItemDefinition* QuestDefinition,
         FName BackendName,
-        int32 Progress)
+        int32 Progress,
+        bool Completed)
     {
         if (!PlayerController || !PlayerController->PlayerState || !QuestDefinition)
             return;
@@ -32,9 +33,10 @@ namespace
         const auto TemplateId = "Quest:" + std::string(QuestName.begin(), QuestName.end());
         const auto Payload = "{\"templateId\":\"" + TemplateId + "\",\"objective\":\"" +
                              std::string(ObjectiveName.begin(), ObjectiveName.end()) + "\",\"progress\":" +
-                             std::to_string(Progress) + "}";
+                             std::to_string(Progress) + ",\"completed\":" +
+                             (Completed ? "true" : "false") + "}";
         const auto Objective = std::string(ObjectiveName.begin(), ObjectiveName.end());
-        std::thread([Url, Payload, AccountId, TemplateId, Objective]()
+        std::thread([Url, Payload, AccountId, TemplateId, Objective, Progress, Completed]()
         {
             auto Curl = curl_easy_init();
             if (!Curl)
@@ -59,6 +61,9 @@ namespace
             if (Result != CURLE_OK || (HttpStatus != 204 && HttpStatus != 200))
                 printf("[gs-backend] failed to save quest | account=%s | quest=%s | objective=%s | http=%ld | error=%s\n",
                        AccountId.c_str(), TemplateId.c_str(), Objective.c_str(), HttpStatus, curl_easy_strerror(Result));
+            else
+                printf("[gs-backend] saved quest | account=%s | quest=%s | objective=%s | progress=%d | completed=%s\n",
+                       AccountId.c_str(), TemplateId.c_str(), Objective.c_str(), Progress, Completed ? "true" : "false");
         }).detach();
     }
 }
@@ -306,33 +311,43 @@ void ProgressQuest(UFortQuestManager* _this, AFortPlayerControllerAthena* Player
     }
 
     auto QuestObjective = *QuestObjectivePtr;
+    if (!QuestObjective || Count <= 0 || QuestObjective->RequiredCount <= 0)
+        return;
 
-    auto AcheivedCount = QuestObjective->AchievedCount;
+    const auto AchievedCount = QuestObjective->AchievedCount;
+    if (AchievedCount >= QuestObjective->RequiredCount)
+        return;
 
-    bool bAllObjectivesCompleted = AcheivedCount + Count == QuestObjective->RequiredCount;
+    const auto CandidateProgress = static_cast<int64_t>(AchievedCount) + Count;
+    auto UpdatedProgress = CandidateProgress < QuestObjective->RequiredCount
+                               ? static_cast<int32>(CandidateProgress)
+                               : QuestObjective->RequiredCount;
+    const auto ProgressDelta = UpdatedProgress - AchievedCount;
+    if (ProgressDelta <= 0)
+        return;
 
-    if (bAllObjectivesCompleted)
+    QuestObjective->AchievedCount = UpdatedProgress;
+    const bool bObjectiveCompleted = UpdatedProgress >= QuestObjective->RequiredCount;
+    bool bAllObjectivesCompleted = true;
+    for (auto& Objective : QuestItem->Objectives)
     {
-        for (auto& Objective : QuestItem->Objectives)
+        if (!Objective || Objective->AchievedCount < Objective->RequiredCount)
         {
-            if (Objective == QuestObjective)
-                continue;
-
-            bAllObjectivesCompleted = Objective->AchievedCount == Objective->RequiredCount;
-
-            if (!bAllObjectivesCompleted)
-                break;
+            bAllObjectivesCompleted = false;
+            break;
         }
     }
 
-    printf("[Quests] %s Completed: %s\n", BackendName.ToString().c_str(), (AcheivedCount + Count == QuestObjective->RequiredCount) ? "true" : "false");
+    printf("[Quests] %s Progress: %d/%d | Completed: %s\n",
+           BackendName.ToString().c_str(), UpdatedProgress, QuestObjective->RequiredCount,
+           bObjectiveCompleted ? "true" : "false");
     // keep it the same damnit
-    _this->SelfCompletedUpdatedQuest(PlayerController, QuestDefinition, BackendName, AcheivedCount + Count, Count, nullptr, AcheivedCount + Count == QuestObjective->RequiredCount, bAllObjectivesCompleted);
+    _this->SelfCompletedUpdatedQuest(PlayerController, QuestDefinition, BackendName, UpdatedProgress, ProgressDelta, nullptr, bObjectiveCompleted, bAllObjectivesCompleted);
 
     if (!UFortQuestManager::SelfCompletedUpdatedQuest__Ptr)
-        _this->HandleQuestUpdated(PlayerController, QuestDefinition, BackendName, AcheivedCount + Count, Count, nullptr, AcheivedCount + Count == QuestObjective->RequiredCount, bAllObjectivesCompleted);
+        _this->HandleQuestUpdated(PlayerController, QuestDefinition, BackendName, UpdatedProgress, ProgressDelta, nullptr, bObjectiveCompleted, bAllObjectivesCompleted);
     else if (!UFortQuestManager::HandleQuestUpdated__Ptr)
-        _this->HandleQuestObjectiveUpdated(PlayerController, QuestDefinition, BackendName, AcheivedCount + Count, Count, nullptr, AcheivedCount + Count == QuestObjective->RequiredCount, bAllObjectivesCompleted);
+        _this->HandleQuestObjectiveUpdated(PlayerController, QuestDefinition, BackendName, UpdatedProgress, ProgressDelta, nullptr, bObjectiveCompleted, bAllObjectivesCompleted);
     else if (!UFortQuestManager::HandleQuestObjectiveUpdated__Ptr)
     {
         UFortQuestManagerComponent_Athena* QuestManagerComp = nullptr;
@@ -347,19 +362,16 @@ void ProgressQuest(UFortQuestManager* _this, AFortPlayerControllerAthena* Player
         }
 
         if (QuestManagerComp)
-            QuestManagerComp->HandleQuestObjectiveUpdated(PlayerController, QuestDefinition, BackendName, AcheivedCount + Count, Count, nullptr, AcheivedCount + Count == QuestObjective->RequiredCount,
+            QuestManagerComp->HandleQuestObjectiveUpdated(PlayerController, QuestDefinition, BackendName, UpdatedProgress, ProgressDelta, nullptr, bObjectiveCompleted,
                                                           bAllObjectivesCompleted);
     }
 
     if (PlayerController->HasXPComponent())
     {
-        PlayerController->XPComponent->QuestObjectiveUpdated(PlayerController, QuestDefinition, BackendName, Count, AcheivedCount + Count == QuestObjective->RequiredCount, bAllObjectivesCompleted);
+        PlayerController->XPComponent->QuestObjectiveUpdated(PlayerController, QuestDefinition, BackendName, ProgressDelta, bObjectiveCompleted, bAllObjectivesCompleted);
     }
 
-    const auto UpdatedProgress = AcheivedCount + Count < QuestObjective->RequiredCount
-                                     ? AcheivedCount + Count
-                                     : QuestObjective->RequiredCount;
-    ReportDailyQuestProgress(PlayerController, QuestDefinition, BackendName, UpdatedProgress);
+    ReportDailyQuestProgress(PlayerController, QuestDefinition, BackendName, UpdatedProgress, bAllObjectivesCompleted);
 }
 
 std::unordered_map<AActor*, std::unordered_map<int32_t, int32_t>> CountThresholdMap;

@@ -127,8 +127,8 @@ void AFortPlayerControllerAthena::ServerAcknowledgePossession(UObject* Context, 
     if (Num == 0)
     {
         static auto SmartItemDefClass = FindClass("FortSmartBuildingItemDefinition");
-        static bool HasCosmeticLoadoutPC = PlayerController->HasCosmeticLoadoutPC();
-        static bool HasCustomizationLoadout = PlayerController->HasCustomizationLoadout();
+        const bool HasCosmeticLoadoutPC = PlayerController->HasCosmeticLoadoutPC();
+        const bool HasCustomizationLoadout = PlayerController->HasCustomizationLoadout();
 
         if (HasCosmeticLoadoutPC && PlayerController->CosmeticLoadoutPC.Pickaxe)
             PlayerController->WorldInventory->GiveItem(PlayerController->CosmeticLoadoutPC.Pickaxe->WeaponDefinition);
