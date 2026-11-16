@@ -361,36 +361,67 @@ namespace
         if (!PlayerController || !Pawn)
             return;
 
-        const FFortAthenaLoadout* Loadout = nullptr;
-        if (PlayerController->HasCosmeticLoadoutPC())
-            Loadout = &PlayerController->CosmeticLoadoutPC;
-        else if (PlayerController->HasCustomizationLoadout())
-            Loadout = &PlayerController->CustomizationLoadout;
-        if (!Loadout)
+        const FFortAthenaLoadout* CosmeticLoadout =
+            PlayerController->HasCosmeticLoadoutPC() ? &PlayerController->CosmeticLoadoutPC : nullptr;
+        const FFortAthenaLoadout* CustomizationLoadout =
+            PlayerController->HasCustomizationLoadout() ? &PlayerController->CustomizationLoadout : nullptr;
+        if (!CosmeticLoadout && !CustomizationLoadout)
         {
             Diagnostics::Log("[gs-backend] no loadout properties | CosmeticLoadoutPC=%d | CustomizationLoadout=%d",
                              PlayerController->HasCosmeticLoadoutPC(), PlayerController->HasCustomizationLoadout());
             return;
         }
 
-        Diagnostics::Log("[gs-backend] pawn loadout fields | character=%s | backpack=%s | pickaxe=%s | glider=%s | contrail=%s",
-                         Loadout->Character ? "set" : "empty",
-                         Loadout->Backpack ? "set" : "empty",
-                         Loadout->Pickaxe ? "set" : "empty",
-                         Loadout->Glider ? "set" : "empty",
-                         Loadout->SkyDiveContrail ? "set" : "empty");
+        auto Character = CosmeticLoadout ? CosmeticLoadout->Character : nullptr;
+        if (!Character && CustomizationLoadout)
+            Character = CustomizationLoadout->Character;
+        auto Backpack = CosmeticLoadout ? CosmeticLoadout->Backpack : nullptr;
+        if (!Backpack && CustomizationLoadout)
+            Backpack = CustomizationLoadout->Backpack;
+        auto Pickaxe = CosmeticLoadout ? CosmeticLoadout->Pickaxe : nullptr;
+        if (!Pickaxe && CustomizationLoadout)
+            Pickaxe = CustomizationLoadout->Pickaxe;
+        auto Glider = CosmeticLoadout ? CosmeticLoadout->Glider : nullptr;
+        if (!Glider && CustomizationLoadout)
+            Glider = CustomizationLoadout->Glider;
+        auto Contrail = CosmeticLoadout ? CosmeticLoadout->SkyDiveContrail : nullptr;
+        if (!Contrail && CustomizationLoadout)
+            Contrail = CustomizationLoadout->SkyDiveContrail;
+
+        auto ItemName = [](const UFortItemDefinition* Item) -> std::string
+        {
+            if (!Item)
+                return "empty";
+            const auto Name = Item->Name.ToString();
+            return std::string(Name.begin(), Name.end());
+        };
+        Diagnostics::Log("[gs-backend] cosmetic loadouts | pc=%s/%s/%s/%s/%s | customization=%s/%s/%s/%s/%s",
+                         ItemName(CosmeticLoadout ? CosmeticLoadout->Character : nullptr).c_str(),
+                         ItemName(CosmeticLoadout ? CosmeticLoadout->Backpack : nullptr).c_str(),
+                         ItemName(CosmeticLoadout ? CosmeticLoadout->Pickaxe : nullptr).c_str(),
+                         ItemName(CosmeticLoadout ? CosmeticLoadout->Glider : nullptr).c_str(),
+                         ItemName(CosmeticLoadout ? CosmeticLoadout->SkyDiveContrail : nullptr).c_str(),
+                         ItemName(CustomizationLoadout ? CustomizationLoadout->Character : nullptr).c_str(),
+                         ItemName(CustomizationLoadout ? CustomizationLoadout->Backpack : nullptr).c_str(),
+                         ItemName(CustomizationLoadout ? CustomizationLoadout->Pickaxe : nullptr).c_str(),
+                         ItemName(CustomizationLoadout ? CustomizationLoadout->Glider : nullptr).c_str(),
+                         ItemName(CustomizationLoadout ? CustomizationLoadout->SkyDiveContrail : nullptr).c_str());
+        Diagnostics::Log("[gs-backend] selected cosmetics | character=%s | backpack=%s | pickaxe=%s | glider=%s | contrail=%s",
+                         ItemName(Character).c_str(), ItemName(Backpack).c_str(),
+                         ItemName(Pickaxe).c_str(), ItemName(Glider).c_str(),
+                         ItemName(Contrail).c_str());
 
         std::unordered_map<uint8, const UCustomCharacterPart*> Parts;
 
-        if (Loadout->Character && Loadout->Character->HeroDefinition)
+        if (Character && Character->HeroDefinition)
         {
             if (PlayerController->PlayerState->HasHeroType())
-                PlayerController->PlayerState->HeroType = Loadout->Character->HeroDefinition;
+                PlayerController->PlayerState->HeroType = Character->HeroDefinition;
 
             if (ApplyCharacterCustomization)
                 ((void (*)(AActor*, AActor*))ApplyCharacterCustomization)(PlayerController->PlayerState, Pawn);
 
-            for (auto& SpecializationSoft : Loadout->Character->HeroDefinition->Specializations)
+            for (auto& SpecializationSoft : Character->HeroDefinition->Specializations)
             {
                 auto Specialization = SpecializationSoft.Get();
                 if (!Specialization)
@@ -405,10 +436,58 @@ namespace
             }
         }
 
-        if (Loadout->Backpack)
-            for (auto& Part : Loadout->Backpack->CharacterParts)
+        if (Backpack)
+            for (auto& Part : Backpack->CharacterParts)
                 if (Part)
                     Parts[Part->CharacterPartType] = Part;
+
+        const FFortAthenaLoadout* VariantLoadout = nullptr;
+        if (Character && CosmeticLoadout && CosmeticLoadout->Character == Character)
+            VariantLoadout = CosmeticLoadout;
+        else if (Character && CustomizationLoadout && CustomizationLoadout->Character == Character)
+            VariantLoadout = CustomizationLoadout;
+        else
+            VariantLoadout = CosmeticLoadout ? CosmeticLoadout : CustomizationLoadout;
+
+        const FFortAthenaLoadout* AlternateVariantLoadout =
+            VariantLoadout == CosmeticLoadout ? CustomizationLoadout : CosmeticLoadout;
+        if ((!VariantLoadout || VariantLoadout->CharacterVariantChannels.Num() == 0) &&
+            AlternateVariantLoadout && AlternateVariantLoadout->CharacterVariantChannels.Num() > 0)
+            VariantLoadout = AlternateVariantLoadout;
+
+        if (VariantLoadout)
+            for (int32 VariantIndex = 0; VariantIndex < VariantLoadout->CharacterVariantChannels.Num(); ++VariantIndex)
+            {
+                auto& VariantChannel = VariantLoadout->CharacterVariantChannels.Get(
+                    VariantIndex, FMcpVariantChannelInfo::Size());
+                auto Cosmetic = VariantChannel.ItemVariantIsUsedFor;
+                if (!Cosmetic)
+                    continue;
+
+                for (auto ItemVariant : Cosmetic->ItemVariants)
+                {
+                    if (!ItemVariant)
+                        continue;
+
+                    auto PartVariant = ItemVariant->Cast<UFortCosmeticCharacterPartVariant>();
+                    if (!PartVariant)
+                        continue;
+
+                    for (int32 OptionIndex = 0; OptionIndex < PartVariant->PartOptions.Num(); ++OptionIndex)
+                    {
+                        auto& PartOption = PartVariant->PartOptions.Get(OptionIndex, FPartVariantDef::Size());
+                        if (VariantChannel.ActiveVariantTag.TagName != PartOption.CustomizationVariantTag.TagName)
+                            continue;
+
+                        for (auto& PartSoft : PartOption.VariantParts)
+                        {
+                            auto Part = PartSoft.Get();
+                            if (Part)
+                                Parts[Part->CharacterPartType] = Part;
+                        }
+                    }
+                }
+            }
 
         for (const auto& [PartType, Part] : Parts)
             Pawn->ServerChoosePart(PartType, const_cast<UCustomCharacterPart*>(Part));
@@ -416,57 +495,6 @@ namespace
                          static_cast<unsigned long long>(Parts.size()),
                          ApplyCharacterCustomization ? "available" : "unavailable");
     }
-}
-
-void AFortGameMode::InitNewPlayer_(UObject* Context, FFrame& Stack, FString* Ret)
-{
-    AFortPlayerControllerAthena* NewPlayer = nullptr;
-    Stack.StepCompiledIn(&NewPlayer);
-    auto& IncomingUniqueId = Stack.StepCompiledInRef<FUniqueNetIdRepl>();
-    auto& Options = Stack.StepCompiledInRef<FString>();
-    auto& Portal = Stack.StepCompiledInRef<FString>();
-    Stack.IncrementCode();
-
-    auto GameMode = static_cast<AFortGameMode*>(Context);
-    *Ret = callOGWithRet(GameMode, Stack.GetCurrentNativeFunction(), InitNewPlayer,
-                         NewPlayer, IncomingUniqueId, Options, Portal);
-
-    auto PlayerState = NewPlayer ? NewPlayer->PlayerState : nullptr;
-    const auto IncomingBytes = IncomingUniqueId.ReplicationBytes.Num();
-    const auto OptionsText = Options.ToString();
-    const auto HasAccountIdOption =
-        OptionsText.find("accountId") != std::string::npos ||
-        OptionsText.find("AccountId") != std::string::npos ||
-        OptionsText.find("AccountID") != std::string::npos;
-    const auto HasPlayerIdOption =
-        OptionsText.find("playerId") != std::string::npos ||
-        OptionsText.find("PlayerId") != std::string::npos ||
-        OptionsText.find("UniqueId") != std::string::npos ||
-        OptionsText.find("UniqueID") != std::string::npos;
-    const auto HasSessionIdOption =
-        OptionsText.find("sessionId") != std::string::npos ||
-        OptionsText.find("SessionId") != std::string::npos;
-    const auto HasSessionKeyOption =
-        OptionsText.find("sessionKey") != std::string::npos ||
-        OptionsText.find("SessionKey") != std::string::npos;
-
-    if (PlayerState && IncomingBytes >= 18 && GetEpicAccountId(PlayerState).empty())
-    {
-        if (PlayerState->HasUniqueID())
-            PlayerState->UniqueID = IncomingUniqueId;
-        else if (PlayerState->HasUniqueId())
-            PlayerState->UniqueId = IncomingUniqueId;
-    }
-
-    const auto UniqueIdBytes = PlayerState && PlayerState->HasUniqueId()
-                                   ? PlayerState->UniqueId.ReplicationBytes.Num()
-                                   : -1;
-    const auto LegacyUniqueIdBytes = PlayerState && PlayerState->HasUniqueID()
-                                         ? PlayerState->UniqueID.ReplicationBytes.Num()
-                                         : -1;
-    Diagnostics::Log("[gs-backend] InitNewPlayer identity | incoming bytes=%d | UniqueId bytes=%d | UniqueID bytes=%d | options chars=%d | accountId key=%d | playerId key=%d | sessionId key=%d | sessionKey key=%d",
-                    IncomingBytes, UniqueIdBytes, LegacyUniqueIdBytes, Options.Num(),
-                    HasAccountIdOption, HasPlayerIdOption, HasSessionIdOption, HasSessionKeyOption);
 }
 
 void ShowFoundation(const ABuildingFoundation* Foundation)
@@ -2637,12 +2665,6 @@ void AFortGameMode::PostLoadHook()
     ApplyCharacterCustomization = FindApplyCharacterCustomization();
     NotifyGameMemberAdded_ = FindNotifyGameMemberAdded();
     StartStreamingAdditionalPlaylistLevel_ = FindStartStreamingAdditionalPlaylistLevel();
-
-    auto InitNewPlayerFunction = GetDefaultObj()->GetFunction("InitNewPlayer");
-    if (InitNewPlayerFunction)
-        Hooking::ExecHook(InitNewPlayerFunction, InitNewPlayer_, InitNewPlayer_OG);
-    else
-        Diagnostics::Log("[gs-backend] InitNewPlayer hook unavailable");
 
     auto spdf = GetDefaultObj()->GetFunction("SpawnDefaultPawnFor");
     SpawnDefaultPawnForIdx = spdf->GetVTableIndex();
